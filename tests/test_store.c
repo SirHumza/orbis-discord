@@ -275,6 +275,47 @@ TEST(test_store_message_lookup){
     store_free(st);
 }
 
+TEST(test_store_guild_unread_counts){
+    store *st = store_new();
+    channel c1 = {.id = 100, .guild = 5, .type = 0};
+    channel c2 = {.id = 101, .guild = 5, .type = 0};
+    channel dm = {.id = 102, .guild = 0, .type = 1};
+    channel other = {.id = 103, .guild = 6, .type = 0};
+    message a = {.id = 10, .chan = 100};
+    message b = {.id = 20, .chan = 100};
+    message c = {.id = 30, .chan = 100, .mentions_me = 1};
+    message d = {.id = 40, .chan = 101};
+    message e = {.id = 50, .chan = 102};
+    message f = {.id = 60, .chan = 103};
+    int unread = -1, mentions = -1;
+    ASSERT_TRUE(st != NULL);
+    store_put_channel(st, &c1);
+    store_put_channel(st, &c2);
+    store_put_channel(st, &dm);
+    store_put_channel(st, &other);
+    store_put_message(st, &a);
+    store_mark_read(st, 100);
+    store_put_message(st, &b);
+    store_put_message(st, &c);
+    store_put_message(st, &d);
+    store_put_message(st, &e);
+    store_put_message(st, &f);
+    store_guild_unread(st, 5, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 3);
+    ASSERT_EQ_INT(mentions, 1);
+    store_guild_unread(st, 6, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 1);
+    ASSERT_EQ_INT(mentions, 0);
+    store_guild_unread(st, 99, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 0);
+    ASSERT_EQ_INT(mentions, 0);
+    store_mark_read(st, 100);
+    store_guild_unread(st, 5, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 1);
+    ASSERT_EQ_INT(mentions, 0);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -291,4 +332,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_typing();
     g_tests_run++; test_store_unread();
     g_tests_run++; test_store_message_lookup();
+    g_tests_run++; test_store_guild_unread_counts();
 }

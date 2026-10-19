@@ -89,6 +89,12 @@ typedef struct {
 } emoji_entry;
 
 typedef struct {
+    uint64_t guild;
+    int unread;
+    int mentions;
+} guild_badge;
+
+typedef struct {
     app_state *app;
     ws_t ws;
     char *recv;
@@ -143,6 +149,10 @@ typedef struct {
     uint64_t gif_chan;
     char gif_q[96];
     gif_item gif_list[16];
+    uint64_t badge_rev;
+    uint64_t badge_last_read;
+    int badge_n;
+    guild_badge badges[64];
     int pins;
     int pins_pending;
     int pins_loaded;
@@ -1318,6 +1328,26 @@ static void view_build(main_ctx *L, frame_view *v){
     if(v->nt > 0) v->active = v->text[v->ci];
 }
 
+static void badges_refresh(main_ctx *L){
+    store *st = L->app->st;
+    const channel *lc = L->chan_loaded ? store_channel(st, L->chan_loaded)
+                                       : NULL;
+    uint64_t lr = lc ? lc->last_read : 0;
+    uint64_t rev = store_revision(st);
+    const guild *gs[64];
+    size_t n, i;
+    if(rev == L->badge_rev && lr == L->badge_last_read) return;
+    L->badge_rev = rev;
+    L->badge_last_read = lr;
+    n = store_guilds(st, gs, 64);
+    L->badge_n = (int)n;
+    for(i = 0; i < n; i++){
+        L->badges[i].guild = gs[i]->id;
+        store_guild_unread(st, gs[i]->id, &L->badges[i].unread,
+                           &L->badges[i].mentions);
+    }
+}
+
 static void draw_members(main_ctx *L, const frame_view *v){
     const member *ms[256];
     size_t n, i;
@@ -1908,6 +1938,30 @@ static void draw_main(main_ctx *L, const frame_view *v){
                 first_codepoint(v->guilds[i - 1]->name, buf, sizeof buf);
                 ui_text(36 - ui_text_width(buf, 20) / 2, y + 13, buf, 0xFFFFFFFFu, 20);
             }
+            if(i > 0){
+                const guild_badge *b = NULL;
+                int k;
+                for(k = 0; k < L->badge_n; k++)
+                    if(L->badges[k].guild == v->guilds[i - 1]->id){
+                        b = &L->badges[k];
+                        break;
+                    }
+                if(b && b->mentions > 0){
+                    char cnt[8];
+                    int bw;
+                    if(b->mentions > 99)
+                        snprintf(cnt, sizeof cnt, "99+");
+                    else
+                        snprintf(cnt, sizeof cnt, "%d", b->mentions);
+                    bw = ui_text_width(cnt, 11) + 10;
+                    if(bw < 18) bw = 18;
+                    ui_rrect(12 + 48 - bw, y + 34, bw, 16, 8, 0xFFED4245u);
+                    ui_text(12 + 48 - bw + (bw - ui_text_width(cnt, 11)) / 2,
+                            y + 35, cnt, 0xFFFFFFFFu, 11);
+                } else if(b && b->unread > 0){
+                    ui_rrect(12 + 48 - 12, y + 34, 10, 10, 5, 0xFFFFFFFFu);
+                }
+            }
         }
     }
 
@@ -2120,6 +2174,7 @@ int screen_main_run(app_state *st){
         if(auth_failed) break;
 
         view_build(&L, &v);
+        badges_refresh(&L);
 
         if(v.active && v.active->id != L.chan_loaded){
             L.chan_loaded = v.active->id;

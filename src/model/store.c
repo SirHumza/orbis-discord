@@ -475,6 +475,26 @@ int store_unread(store *st, uint64_t chan){
     return 0;
 }
 
+void store_guild_unread(store *st, uint64_t guild_id, int *unread, int *mentions){
+    size_t i;
+    if(unread) *unread = 0;
+    if(mentions) *mentions = 0;
+    if(!st) return;
+    for(i = 0; i < st->nchannels; i++){
+        const channel *ch = &st->channels[i];
+        chan_msgs *c;
+        const message *m;
+        if(ch->guild != guild_id || ch->type != 0) continue;
+        c = msgs_for(st, ch->id, 0);
+        if(!c) continue;
+        for(m = c->head; m; m = m->next){
+            if(m->id <= ch->last_read || m->pending) continue;
+            if(unread) (*unread)++;
+            if(mentions && m->mentions_me) (*mentions)++;
+        }
+    }
+}
+
 void store_set_member_color(store *st, uint64_t guild_id, uint64_t user_id, uint32_t color){
     size_t i;
     if(!st) return;
