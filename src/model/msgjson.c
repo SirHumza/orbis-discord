@@ -180,6 +180,12 @@ int msg_from_json(message *m, jl_val_t *o){
                 snprintf(e->title, sizeof e->title, "%s", jstr(field(ej, "title")));
                 snprintf(e->desc, sizeof e->desc, "%s", jstr(field(ej, "description")));
                 snprintf(e->url, sizeof e->url, "%s", jstr(field(ej, "url")));
+                snprintf(e->site, sizeof e->site, "%s",
+                         jstr(field(field(ej, "provider"), "name")));
+                snprintf(e->author, sizeof e->author, "%s",
+                         jstr(field(field(ej, "author"), "name")));
+                snprintf(e->footer, sizeof e->footer, "%s",
+                         jstr(field(field(ej, "footer"), "text")));
                 if(img && jstr(field(img, "url"))[0]){
                     snprintf(e->image_url, sizeof e->image_url, "%s",
                              jstr(field(img, "url")));
@@ -195,7 +201,8 @@ int msg_from_json(message *m, jl_val_t *o){
                     e->has_color = 1;
                     e->color = 0xFF000000u | ((uint32_t)col->num & 0xFFFFFFu);
                 }
-                if(e->title[0] || e->desc[0] || e->image_url[0]) m->nemb++;
+                if(e->title[0] || e->desc[0] || e->image_url[0] ||
+                   e->site[0] || e->author[0]) m->nemb++;
             }
         }
     }

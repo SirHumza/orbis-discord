@@ -27,6 +27,9 @@ typedef struct {
     char title[128];
     char desc[512];
     char url[256];
+    char site[64];
+    char author[64];
+    char footer[96];
     char image_url[320];
     int image_w, image_h;
     uint32_t color;

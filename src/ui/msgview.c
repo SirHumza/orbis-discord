@@ -235,6 +235,11 @@ int mv_build(mv_layout *L, const message *head, int width_px,
         }
         for(i = 0; i < m->nemb; i++){
             const embed *e = &m->emb[i];
+            if(e->site[0] || e->author[0]){
+                push_line(L, m, 0, 0, 0, 0, y);
+                mark_emb(L, i, 4);
+                y += MV_LINE_H;
+            }
             if(e->title[0]){
                 push_line(L, m, 0, 0, 0, 0, y);
                 mark_emb(L, i, 1);
@@ -257,6 +262,11 @@ int mv_build(mv_layout *L, const message *head, int width_px,
                 L->lines[L->n - 1].att_w = tw;
                 L->lines[L->n - 1].att_h = th;
                 y += th + 6;
+            }
+            if(e->footer[0]){
+                push_line(L, m, 0, 0, 0, 0, y);
+                mark_emb(L, i, 5);
+                y += MV_LINE_H;
             }
         }
         if(m->nreact > 0){

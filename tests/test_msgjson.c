@@ -320,11 +320,29 @@ TEST(test_msgjson_threads){
     jl_free(v);
 }
 
+TEST(test_msgjson_embed_metadata){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"embeds\":[{"
+        "\"title\":\"Video\",\"description\":\"d\","
+        "\"provider\":{\"name\":\"YouTube\"},\"author\":{\"name\":\"Chan\"},"
+        "\"footer\":{\"text\":\"12 comments\"}}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.nemb, 1);
+    ASSERT_EQ_STR(m.emb[0].site, "YouTube");
+    ASSERT_EQ_STR(m.emb[0].author, "Chan");
+    ASSERT_EQ_STR(m.emb[0].footer, "12 comments");
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
     g_tests_run++; test_msgjson_embed_with_image();
     g_tests_run++; test_msgjson_embed_thumbnail_fallback();
+    g_tests_run++; test_msgjson_embed_metadata();
     g_tests_run++; test_msgjson_reactions();
     g_tests_run++; test_msgjson_reply_reference();
     g_tests_run++; test_msgjson_reply_deleted_reference();

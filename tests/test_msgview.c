@@ -152,6 +152,25 @@ TEST(test_msgview_embed_rows){
     mv_free(&L);
 }
 
+TEST(test_msgview_embed_metadata_rows){
+    message a = mkmsg(1500000000000ULL, 1, 7, "hi", 0);
+    mv_layout L;
+    a.nemb = 1;
+    snprintf(a.emb[0].title, sizeof a.emb[0].title, "Video");
+    snprintf(a.emb[0].site, sizeof a.emb[0].site, "YouTube");
+    snprintf(a.emb[0].author, sizeof a.emb[0].author, "Chan");
+    snprintf(a.emb[0].footer, sizeof a.emb[0].footer, "12 comments");
+    mv_init(&L);
+    ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 6);
+    ASSERT_EQ_INT(L.lines[3].emb, 0);
+    ASSERT_EQ_INT(L.lines[3].emb_kind, 4);
+    ASSERT_EQ_INT(L.lines[4].emb_kind, 1);
+    ASSERT_EQ_INT(L.lines[5].emb_kind, 5);
+    ASSERT_EQ_INT(L.height,
+                  MV_SEP_H + 5 * MV_LINE_H + MV_GROUP_GAP);
+    mv_free(&L);
+}
+
 TEST(test_msgview_reaction_row){
     message a = mkmsg(1500000000000ULL, 1, 7, "hi", 0);
     mv_layout L;
@@ -231,6 +250,7 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_height_accounts_for_separator_and_gap();
     g_tests_run++; test_msgview_attachment_rows();
     g_tests_run++; test_msgview_embed_rows();
+    g_tests_run++; test_msgview_embed_metadata_rows();
     g_tests_run++; test_msgview_reaction_row();
     g_tests_run++; test_msgview_reply_row();
     g_tests_run++; test_msgview_image_list();

@@ -26,7 +26,7 @@ smoke-tested on retail hardware yet.
 | Message attachments: image/GIF thumbnails and file rows, CDN fetch wired | Done | host tests, PS4 elf |
 | Avatars (chat, members, DMs) and guild icons from the CDN | Done | host tests, PS4 elf |
 | Role colors: guild roles parsed, author/member names colored | Done | host tests, PS4 elf |
-| Embeds: color bar, title, description wrap, image/thumbnail rows | Done | host tests, PS4 elf |
+| Embeds/link previews: color bar, site/author, title, description, image, footer | Done | host tests, PS4 elf |
 | Reactions: chips, counts, me highlight, live gateway updates | Done | host tests, PS4 elf |
 | Typing indicators: TYPING_START, composer strip, /typing POST | Done | host tests, PS4 elf |
 | Reply previews: referenced-message rows, preserved on edit | Done | host tests, PS4 elf |
@@ -71,7 +71,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (171 checks) + fixtures
+tests/        host test suite (173 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -115,7 +115,7 @@ Phase 1 (in progress):
 Phase 2, messaging parity:
 
 - [x] Attachment download (viewer save) and upload (multipart, saved files)
-- [ ] Link previews
+- [x] Link previews (embed cards: site/author, title, description, image, footer)
 - [x] Image viewer: fullscreen fit with UP/DOWN cycling, TRIANGLE opens, CROSS closes
 - [x] Reaction rendering: chip row, counts, me highlight, live gateway updates
 - [x] Stickers: PNG/APNG rendered, GIF first frame, Lottie name fallback
@@ -160,8 +160,8 @@ Phase 2, messaging parity:
   will reject the session.
 - Attachments are fetched synchronously from the CDN on first draw, so a slow
   or large image can stall the render loop (HTTP responses are capped at 4 MB).
-- Attachments are capped at 4 per message and embeds at 2; embed fields,
-  footers, authors and video embeds are not rendered. Uploads are
+- Attachments are capped at 4 per message and embeds at 2; embed fields
+  and video embeds are not rendered. Uploads are
   attachment-only (no caption), limited to 8 MB, and read from
   `/data/orbis-discord/downloads`.
 - User-token clients are against Discord's terms; use at your own risk.

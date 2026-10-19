@@ -2229,6 +2229,15 @@ static void draw_messages(main_ctx *L){
             } else if(ln->emb_kind == 1){
                 trunc_utf8(fb, sizeof fb, e->title, 70);
                 ui_text(x0 + 16, y + 3, fb, UI_TEXT, 16);
+            } else if(ln->emb_kind == 4){
+                char cap[140];
+                snprintf(cap, sizeof cap, "%s%s%s", e->site,
+                         e->site[0] && e->author[0] ? " - " : "", e->author);
+                trunc_utf8(fb, sizeof fb, cap, 84);
+                ui_text(x0 + 16, y + 3, fb, UI_TEXT_DIM, 12);
+            } else if(ln->emb_kind == 5){
+                trunc_utf8(fb, sizeof fb, e->footer, 90);
+                ui_text(x0 + 16, y + 3, fb, UI_TEXT_DIM, 12);
             } else {
                 int len = ln->len;
                 if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
