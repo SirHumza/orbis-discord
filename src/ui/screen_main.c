@@ -115,7 +115,7 @@ typedef struct {
     int menu;
     int menu_i;
     int menu_n;
-    int menu_items[5];
+    int menu_items[6];
     int react_pick;
     int react_i;
     int pins;
@@ -145,6 +145,16 @@ typedef struct {
     char presence[16];
     int status_menu;
     int status_i;
+    int profile;
+    int profile_pending;
+    int profile_gen;
+    int profile_bot;
+    uint64_t profile_user;
+    uint32_t profile_color;
+    char profile_name[64];
+    char profile_tag[64];
+    char profile_avatar[128];
+    char profile_joined[32];
 } main_ctx;
 
 typedef struct {
@@ -1051,6 +1061,7 @@ static const char *menu_label(int item){
     case 2: return "Edit";
     case 3: return "Delete";
     case 4: return "React";
+    case 5: return "Profile";
     default: return "Cancel";
     }
 }
@@ -1061,6 +1072,7 @@ static void menu_open(main_ctx *L, const message *m){
     L->menu_n = 0;
     L->menu_items[L->menu_n++] = 1;
     L->menu_items[L->menu_n++] = 4;
+    L->menu_items[L->menu_n++] = 5;
     if(own){
         L->menu_items[L->menu_n++] = 2;
         L->menu_items[L->menu_n++] = 3;
@@ -1112,6 +1124,8 @@ static void react_toggle(main_ctx *L, const message *m, const char *emoji){
     }
 }
 
+static void profile_open(main_ctx *L, const message *m);
+
 static void menu_choose(main_ctx *L, const message *m, int item){
     char text[1024], title[96];
     if(item == 1){
@@ -1128,6 +1142,8 @@ static void menu_choose(main_ctx *L, const message *m, int item){
     } else if(item == 4){
         L->react_pick = 1;
         L->react_i = 0;
+    } else if(item == 5){
+        profile_open(L, m);
     }
 }
 
@@ -1220,6 +1236,115 @@ static uint32_t user_color(store *st, uint64_t chan, uint64_t user){
     for(i = 0; i < n; i++)
         if(ms[i]->user == user && ms[i]->color) return ms[i]->color;
     return UI_TEXT;
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+    int gen;
+} profile_fetch;
+
+static void profile_cb(int status, const char *body, void *ud){
+    profile_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v = NULL, *u, *uid, *uname, *gname, *uav, *bot, *nick, *joined;
+    jl_val_t *disc;
+    uint64_t id;
+    char tag[64];
+    if(f->gen != L->profile_gen){
+        free(f);
+        return;
+    }
+    L->profile_pending = 0;
+    if(status != 200 || !body){
+        log_msg("rest: profile failed (%d)", status);
+        set_status(L, "Profile unavailable");
+        free(f);
+        return;
+    }
+    v = jl_parse(body, strlen(body));
+    if(v && v->type == JL_OBJECT){
+        u = jl_obj_get(v, "user");
+        if(!u || u->type != JL_OBJECT) u = v;
+        uid = jl_obj_get(u, "id");
+        uname = jl_obj_get(u, "username");
+        gname = jl_obj_get(u, "global_name");
+        uav = jl_obj_get(u, "avatar");
+        bot = jl_obj_get(u, "bot");
+        disc = jl_obj_get(u, "discriminator");
+        nick = jl_obj_get(v, "nick");
+        joined = jl_obj_get(v, "joined_at");
+        id = uid && uid->type == JL_STRING ? sn_parse(uid->str)
+                                           : L->profile_user;
+        if(id) L->profile_user = id;
+        if(nick && nick->type == JL_STRING && nick->str[0])
+            snprintf(L->profile_name, sizeof L->profile_name, "%s",
+                     nick->str);
+        else if(gname && gname->type == JL_STRING && gname->str[0])
+            snprintf(L->profile_name, sizeof L->profile_name, "%s",
+                     gname->str);
+        else if(uname && uname->type == JL_STRING)
+            snprintf(L->profile_name, sizeof L->profile_name, "%s",
+                     uname->str);
+        tag[0] = 0;
+        if(uname && uname->type == JL_STRING && uname->str[0]){
+            snprintf(tag, sizeof tag, "@%s", uname->str);
+            if(disc && disc->type == JL_STRING && disc->str[0] &&
+               strcmp(disc->str, "0") != 0)
+                snprintf(tag + strlen(tag), sizeof tag - strlen(tag), "#%s",
+                         disc->str);
+            snprintf(L->profile_tag, sizeof L->profile_tag, "%s", tag);
+        }
+        cdn_avatar_url(L->profile_avatar, sizeof L->profile_avatar, id,
+                       uav && uav->type == JL_STRING ? uav->str : "");
+        L->profile_bot = bot && bot->type == JL_BOOL && bot->num;
+        L->profile_color = user_color(L->app->st, f->chan, id);
+        L->profile_joined[0] = 0;
+        if(joined && joined->type == JL_STRING && strlen(joined->str) >= 10){
+            memcpy(L->profile_joined, joined->str, 10);
+            L->profile_joined[10] = 0;
+        }
+    }
+    jl_free(v);
+    free(f);
+}
+
+static void profile_open(main_ctx *L, const message *m){
+    const channel *ch;
+    char path[256];
+    profile_fetch *f;
+    L->profile = 1;
+    L->profile_pending = 1;
+    L->profile_gen++;
+    L->profile_user = m->author_id;
+    L->profile_bot = 0;
+    L->profile_color = user_color(L->app->st, m->chan, m->author_id);
+    snprintf(L->profile_name, sizeof L->profile_name, "%s", m->author_name);
+    snprintf(L->profile_avatar, sizeof L->profile_avatar, "%s",
+             m->author_avatar);
+    L->profile_tag[0] = 0;
+    L->profile_joined[0] = 0;
+    ch = store_channel(L->app->st, m->chan);
+    if(ch && ch->guild)
+        snprintf(path, sizeof path, "/api/v9/guilds/%llu/members/%llu",
+                 (unsigned long long)ch->guild,
+                 (unsigned long long)m->author_id);
+    else
+        snprintf(path, sizeof path, "/api/v9/users/%llu",
+                 (unsigned long long)m->author_id);
+    f = calloc(1, sizeof *f);
+    if(!f){
+        L->profile_pending = 0;
+        return;
+    }
+    f->ctx = L;
+    f->chan = m->chan;
+    f->gen = L->profile_gen;
+    if(rest_send(L->app->rest, "GET", path, NULL, profile_cb, f) != 0){
+        L->profile_pending = 0;
+        free(f);
+        set_status(L, "Profile unavailable");
+    }
 }
 
 static void draw_messages(main_ctx *L){
@@ -1537,6 +1662,44 @@ static void draw_menu(main_ctx *L){
     }
 }
 
+static void draw_profile(main_ctx *L){
+    int w = 560, h = 360;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2;
+    uint32_t banner = L->profile_color != UI_TEXT ? L->profile_color
+                                                  : UI_BLURPLE;
+    char nb[64], nb2[64];
+    int nw;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_rrect(x, y, w, 88, 10, banner);
+    ui_rect(x, y + 48, w, 40, banner);
+    ui_rrect(x + 28, y + 44, 96, 96, 48, UI_CHANNEL_BG);
+    ui_img(L->profile_avatar, x + 28, y + 44, 96, 96);
+    trunc_utf8(nb, sizeof nb, L->profile_name, 28);
+    nw = ui_text_width(nb, 24);
+    ui_text(x + 144, y + 58, nb, UI_TEXT, 24);
+    if(L->profile_bot){
+        ui_rrect(x + 144 + nw + 10, y + 64, 40, 18, 4, UI_BLURPLE);
+        ui_text(x + 144 + nw + 17, y + 64, "BOT", UI_TEXT, 11);
+    }
+    trunc_utf8(nb2, sizeof nb2, L->profile_tag, 34);
+    if(nb2[0]) ui_text(x + 144, y + 90, nb2, UI_TEXT_DIM, 16);
+    ui_rect(x + 28, y + 164, w - 56, 1, UI_SEP);
+    if(L->profile_joined[0]){
+        ui_text(x + 28, y + 186, "JOINED", UI_TEXT_DIM, 12);
+        ui_text(x + 28, y + 204, L->profile_joined, UI_TEXT, 16);
+    } else {
+        ui_text(x + 28, y + 186, "DIRECT MESSAGE", UI_TEXT_DIM, 12);
+    }
+    snprintf(nb, sizeof nb, "User ID: %llu",
+             (unsigned long long)L->profile_user);
+    ui_text(x + 28, y + 244, nb, UI_TEXT_DIM, 14);
+    if(L->profile_pending)
+        ui_text(x + 28, y + h - 32, "Loading profile...", UI_TEXT_DIM, 12);
+    else
+        ui_text(x + 28, y + h - 32, "CROSS close", UI_TEXT_DIM, 12);
+}
+
 static void draw_main(main_ctx *L, const frame_view *v){
     char buf[160];
     int i, first, y;
@@ -1845,7 +2008,7 @@ int screen_main_run(app_state *st){
                         int item = L.menu_items[L.menu_i];
                         L.menu = 0;
                         if(m){
-                            if(item != 4) L.sel = 0;
+                            if(item != 4 && item != 5) L.sel = 0;
                             menu_choose(&L, m, item);
                         } else {
                             L.sel = 0;
@@ -1940,6 +2103,14 @@ int screen_main_run(app_state *st){
                     } else if(e == IE_BACK || e == IE_MENU ||
                               e == IE_FRIENDS){
                         L.friends = 0;
+                    }
+                    continue;
+                }
+                if(L.profile){
+                    if(e == IE_SELECT || e == IE_BACK || e == IE_MENU){
+                        L.profile = 0;
+                        L.profile_gen++;
+                        L.sel = 0;
                     }
                     continue;
                 }
@@ -2040,6 +2211,7 @@ int screen_main_run(app_state *st){
         if(L.search) draw_search(&L);
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
+        if(L.profile) draw_profile(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);
