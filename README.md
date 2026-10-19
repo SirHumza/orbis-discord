@@ -36,6 +36,7 @@ rest of the feature set are the next milestones.
 | Reaction interaction: quick picker, REST PUT/DELETE own reaction | Done | host tests, PS4 elf |
 | Pins: L2 overlay, pinned message list, CROSS jumps to the message | Done | PS4 elf |
 | Message search: R2 query overlay (guild/channel endpoint), CROSS jumps | Done | PS4 elf |
+| Friends: OPTIONS overlay from relationships, CROSS opens/creates a DM | Done | PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -111,7 +112,8 @@ Phase 2, messaging parity:
 - [ ] Guild-rail unread/mention badges, notification sounds
 - [x] Avatars/guild icons from the CDN, role colors on author/member names
 - [ ] Member profiles, role hoisting/sections
-- [ ] DMs and group DMs, friends list, presence control
+- [x] DM list (REST), friends overlay (OPTIONS) with open/create DM
+- [ ] Group DM management, presence control
 - [ ] Threads, forums, invites, channel categories, permissions
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback

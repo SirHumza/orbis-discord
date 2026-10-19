@@ -66,6 +66,15 @@ typedef struct {
     const channel *active;
 } frame_view;
 
+#define FRIEND_MAX 64
+
+typedef struct {
+    uint64_t id;
+    char name[64];
+    char avatar[128];
+    int type;
+} friend_entry;
+
 typedef struct {
     app_state *app;
     ws_t ws;
@@ -127,6 +136,12 @@ typedef struct {
     const message *srch_list[50];
     int srch_n;
     int srch_i;
+    int friends;
+    int friends_pending;
+    int friends_loaded;
+    friend_entry friends_list[FRIEND_MAX];
+    int friend_n;
+    int friend_i;
 } main_ctx;
 
 typedef struct {
@@ -625,6 +640,129 @@ static void search_prompt(main_ctx *L, uint64_t chan, int prefill){
     if(!ime_prompt("Search messages", "", q, sizeof q)) return;
     if(!q[0]) return;
     search_start(L, chan, q);
+}
+
+static void friends_cb(int status, const char *body, void *ud){
+    main_ctx *L = ud;
+    jl_val_t *v;
+    int i;
+    L->friends_pending = 0;
+    if(status != 200){
+        log_msg("rest: friends failed (%d)", status);
+        set_status(L, "Friends failed");
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    L->friend_n = 0;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count && L->friend_n < FRIEND_MAX; i++){
+            jl_val_t *o = jl_arr_at(v, i);
+            jl_val_t *type = o ? jl_obj_get(o, "type") : NULL;
+            jl_val_t *u = o ? jl_obj_get(o, "user") : NULL;
+            jl_val_t *uid = u ? jl_obj_get(u, "id") : NULL;
+            jl_val_t *uname = u ? jl_obj_get(u, "username") : NULL;
+            jl_val_t *gname = u ? jl_obj_get(u, "global_name") : NULL;
+            jl_val_t *uav = u ? jl_obj_get(u, "avatar") : NULL;
+            jl_val_t *rid = o ? jl_obj_get(o, "id") : NULL;
+            friend_entry *fr = &L->friends_list[L->friend_n];
+            uint64_t id = 0;
+            if(uid && uid->type == JL_STRING) id = sn_parse(uid->str);
+            if(!id && rid && rid->type == JL_STRING) id = sn_parse(rid->str);
+            if(!id) continue;
+            memset(fr, 0, sizeof *fr);
+            fr->id = id;
+            if(type && type->type == JL_NUMBER) fr->type = (int)type->num;
+            if(gname && gname->type == JL_STRING && gname->str[0])
+                snprintf(fr->name, sizeof fr->name, "%s", gname->str);
+            else if(uname && uname->type == JL_STRING)
+                snprintf(fr->name, sizeof fr->name, "%s", uname->str);
+            else
+                snprintf(fr->name, sizeof fr->name, "user");
+            cdn_avatar_url(fr->avatar, sizeof fr->avatar, id,
+                           uav && uav->type == JL_STRING ? uav->str : "");
+            L->friend_n++;
+        }
+    }
+    jl_free(v);
+    L->friends_loaded = 1;
+    log_msg("rest: %d relationships", L->friend_n);
+}
+
+static void friends_open(main_ctx *L){
+    L->friends = 1;
+    L->friend_i = 0;
+    if(L->friends_loaded || L->friends_pending) return;
+    L->friends_pending = 1;
+    if(rest_send(L->app->rest, "GET", "/api/v9/users/@me/relationships",
+                 NULL, friends_cb, L) != 0){
+        L->friends_pending = 0;
+        set_status(L, "Friends failed");
+    }
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t uid;
+    char name[64];
+    char avatar[128];
+} dm_open;
+
+static void dm_cb(int status, const char *body, void *ud){
+    dm_open *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v = NULL;
+    channel ch;
+    const channel *dms[64];
+    size_t n, i;
+    int idx = -1;
+    if(status == 200 && body)
+        v = jl_parse(body, strlen(body));
+    if(v && v->type == JL_OBJECT){
+        jl_val_t *id = jl_obj_get(v, "id");
+        jl_val_t *type = jl_obj_get(v, "type");
+        if(id && id->type == JL_STRING){
+            memset(&ch, 0, sizeof ch);
+            ch.id = sn_parse(id->str);
+            ch.type = type && type->type == JL_NUMBER ? (int)type->num : 1;
+            ch.position = -1;
+            snprintf(ch.name, sizeof ch.name, "%s", f->name);
+            snprintf(ch.avatar_url, sizeof ch.avatar_url, "%s", f->avatar);
+            store_put_channel(L->app->st, &ch);
+            n = store_dm_channels(L->app->st, dms, 64);
+            for(i = 0; i < n; i++)
+                if(dms[i]->id == ch.id){ idx = (int)i; break; }
+            L->gn.index = 0;
+            if(idx >= 0) L->cn.index = idx;
+            L->focus = 2;
+            L->friends = 0;
+        }
+    } else {
+        log_msg("rest: dm open failed (%d)", status);
+        set_status(L, "DM failed");
+    }
+    jl_free(v);
+    free(f);
+}
+
+static void friend_dm(main_ctx *L, const friend_entry *fr){
+    char payload[128];
+    dm_open *f;
+    if(!fr || fr->type == 2) return;
+    snprintf(payload, sizeof payload, "{\"recipient_id\":\"%llu\"}",
+             (unsigned long long)fr->id);
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->uid = fr->id;
+    snprintf(f->name, sizeof f->name, "%s", fr->name);
+    snprintf(f->avatar, sizeof f->avatar, "%s", fr->avatar);
+    if(rest_send(L->app->rest, "POST", "/api/v9/users/@me/channels",
+                 payload, dm_cb, f) != 0){
+        free(f);
+        set_status(L, "DM failed");
+        return;
+    }
+    set_status(L, "Opening DM...");
 }
 
 static void messages_cb(int status, const char *body, void *ud){
@@ -1225,6 +1363,48 @@ static void draw_viewer(main_ctx *L){
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
 }
 
+static const char *friend_type_label(int type){
+    switch(type){
+    case 1: return "friend";
+    case 2: return "blocked";
+    case 3: return "incoming request";
+    case 4: return "outgoing request";
+    default: return "relationship";
+    }
+}
+
+static void draw_friends(main_ctx *L){
+    int w = 720, h = 560;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Friends", UI_TEXT, 18);
+    if(L->friends_pending){
+        ui_text(x + 20, y + 60, "Loading friends...", UI_TEXT_DIM, 16);
+    } else if(L->friend_n == 0){
+        ui_text(x + 20, y + 60, "No friends", UI_TEXT_DIM, 16);
+    } else {
+        first = L->friend_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->friend_n - 9) first = L->friend_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->friend_n && i < first + 9; i++){
+            const friend_entry *fr = &L->friends_list[i];
+            char label[64];
+            int ry = y + 56 + (i - first) * 52;
+            if(i == L->friend_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 46, 6, UI_BLURPLE);
+            ui_rrect(x + 20, ry, 32, 32, 16, UI_CHANNEL_BG);
+            ui_img(fr->avatar, x + 20, ry, 32, 32);
+            ui_text(x + 64, ry, fr->name, UI_TEXT, 16);
+            snprintf(label, sizeof label, "%s", friend_type_label(fr->type));
+            ui_text(x + 64, ry + 20, label, UI_TEXT_DIM, 12);
+        }
+    }
+    ui_text(x + 20, y + h - 30, "CROSS message   CIRCLE close",
+            UI_TEXT_DIM, 12);
+}
+
 static void draw_search(main_ctx *L){
     int w = 760, h = 560;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
@@ -1697,6 +1877,19 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.friends){
+                    if(e == IE_UP && L.friend_i > 0){
+                        L.friend_i--;
+                    } else if(e == IE_DOWN && L.friend_i + 1 < L.friend_n){
+                        L.friend_i++;
+                    } else if(e == IE_SELECT && L.friend_n > 0){
+                        friend_dm(&L, &L.friends_list[L.friend_i]);
+                    } else if(e == IE_BACK || e == IE_MENU ||
+                              e == IE_FRIENDS){
+                        L.friends = 0;
+                    }
+                    continue;
+                }
                 if(L.sel){
                     if(e == IE_UP || e == IE_DOWN){
                         const message *m = store_message_step(
@@ -1774,6 +1967,8 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_SEARCH){
                     if(L.focus == 2 && v.active)
                         search_prompt(&L, v.active->id, 0);
+                } else if(e == IE_FRIENDS){
+                    friends_open(&L);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1787,6 +1982,7 @@ int screen_main_run(app_state *st){
         if(L.react_pick) draw_react_pick(&L);
         if(L.pins) draw_pins(&L);
         if(L.search) draw_search(&L);
+        if(L.friends) draw_friends(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);
