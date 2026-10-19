@@ -42,6 +42,22 @@ int msg_from_json(message *m, jl_val_t *o){
                        av && av->type == JL_STRING ? av->str : "");
     }
     snprintf(m->content, sizeof m->content, "%s", jstr(field(o, "content")));
+    {
+        jl_val_t *ref = field(o, "message_reference");
+        if(ref && ref->type == JL_OBJECT){
+            jl_val_t *refm = field(o, "referenced_message");
+            m->reply_to = jid(field(ref, "message_id"));
+            if(m->reply_to && refm && refm->type == JL_OBJECT){
+                const char *c = jstr(field(field(refm, "author"), "username"));
+                size_t k = 0;
+                snprintf(m->reply_name, sizeof m->reply_name, "%s", c);
+                c = jstr(field(refm, "content"));
+                for(; *c && k < sizeof m->reply_text - 1; c++)
+                    m->reply_text[k++] = *c == '\n' ? ' ' : *c;
+                m->reply_text[k] = 0;
+            }
+        }
+    }
     e = field(o, "edited_timestamp");
     if(e && e->type == JL_STRING && e->str[0]) m->has_edit = 1;
     atts = field(o, "attachments");

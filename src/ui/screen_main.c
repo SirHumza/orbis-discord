@@ -673,6 +673,22 @@ static void draw_messages(main_ctx *L){
                 ui_text(rx + 10 + ew + 6, y + 6, cnt, UI_TEXT_DIM, 12);
                 rx += w + 6;
             }
+        } else if(ln->reply >= 0){
+            const message *m = ln->m;
+            char who[80], snip[100];
+            int x = CHAT_X + MSG_PAD + MSG_INDENT;
+            int wx;
+            ui_rect(x - 16, y + 8, 10, 1, UI_SEP);
+            if(m->reply_name[0])
+                snprintf(who, sizeof who, "@%s", m->reply_name);
+            else
+                snprintf(who, sizeof who, "reply");
+            trunc_utf8(who, sizeof who, who, 18);
+            ui_text(x, y + 1, who, UI_TEXT, 13);
+            wx = ui_text_width(who, 13);
+            trunc_utf8(snip, sizeof snip, m->reply_text, 60);
+            if(snip[0])
+                ui_text(x + wx + 8, y + 1, snip, UI_TEXT_DIM, 13);
         } else if(ln->author){
             char tbuf[8];
             int nw, tx;

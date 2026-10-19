@@ -80,6 +80,9 @@ void store_put_message(store *st, const message *in){
         cur->author_id = in->author_id;
         memcpy(cur->author_name, in->author_name, sizeof cur->author_name);
         memcpy(cur->content, in->content, sizeof cur->content);
+        cur->reply_to = in->reply_to;
+        memcpy(cur->reply_name, in->reply_name, sizeof cur->reply_name);
+        memcpy(cur->reply_text, in->reply_text, sizeof cur->reply_text);
         cur->edited_at = in->edited_at;
         cur->has_edit = in->has_edit;
         cur->natt = in->natt;

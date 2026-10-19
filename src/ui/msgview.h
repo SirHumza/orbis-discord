@@ -15,6 +15,7 @@
 #define MV_ATT_MAX_W 400
 #define MV_ATT_MAX_H 260
 #define MV_REACT_H 26
+#define MV_REPLY_H 20
 
 /* width in px of s[0..len) */
 typedef int (*mv_measure_fn)(void *ud, const char *s, size_t len);
@@ -31,6 +32,7 @@ typedef struct {
     int emb;            /* embed index, -1 for non-embed rows */
     int emb_kind;       /* 1 title, 2 description, 3 image */
     int react;          /* -1 for non-reaction rows */
+    int reply;          /* -1 for non-reply rows */
 } mv_line;
 
 typedef struct {

@@ -36,6 +36,9 @@ typedef struct message {
     char author_name[64];
     char author_avatar[128];
     char content[2048];
+    uint64_t reply_to;
+    char reply_name[64];
+    char reply_text[96];
     uint64_t edited_at;
     int has_edit;
     int is_grouped;

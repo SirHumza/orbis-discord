@@ -107,6 +107,36 @@ TEST(test_msgjson_reactions){
     jl_free(v);
 }
 
+TEST(test_msgjson_reply_reference){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"yes\","
+        "\"message_reference\":{\"message_id\":\"99\",\"channel_id\":\"2\"},"
+        "\"referenced_message\":{\"id\":\"99\",\"content\":\"line one\\nline two\","
+        "\"author\":{\"id\":\"5\",\"username\":\"alice\"}}}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.reply_to, 99);
+    ASSERT_EQ_STR(m.reply_name, "alice");
+    ASSERT_EQ_STR(m.reply_text, "line one line two");
+    jl_free(v);
+}
+
+TEST(test_msgjson_reply_deleted_reference){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"yes\","
+        "\"message_reference\":{\"message_id\":\"99\",\"channel_id\":\"2\"}}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.reply_to, 99);
+    ASSERT_EQ_STR(m.reply_name, "");
+    ASSERT_EQ_STR(m.reply_text, "");
+    jl_free(v);
+}
+
 TEST(test_msgjson_requires_id_and_channel){
     const char *json = "{\"id\":\"5\",\"content\":\"x\"}";
     jl_val_t *v = jl_parse(json, strlen(json));
@@ -122,5 +152,7 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_embed_with_image();
     g_tests_run++; test_msgjson_embed_thumbnail_fallback();
     g_tests_run++; test_msgjson_reactions();
+    g_tests_run++; test_msgjson_reply_reference();
+    g_tests_run++; test_msgjson_reply_deleted_reference();
     g_tests_run++; test_msgjson_requires_id_and_channel();
 }

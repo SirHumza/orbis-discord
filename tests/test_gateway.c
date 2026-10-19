@@ -153,6 +153,19 @@ TEST(test_events_typing){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_reply_preserved_on_edit){
+    setup();
+    feed("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"yes\",\"author\":{\"id\":\"7\",\"username\":\"bob\"},\"message_reference\":{\"message_id\":\"19\",\"channel_id\":\"100\"},\"referenced_message\":{\"id\":\"19\",\"content\":\"the original\",\"author\":{\"id\":\"8\",\"username\":\"alice\"}}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->reply_to, 19);
+    ASSERT_EQ_STR(store_messages(s, 100)->reply_name, "alice");
+    feed("{\"op\":0,\"s\":3,\"t\":\"MESSAGE_UPDATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"yes edited\",\"edited_timestamp\":\"2026-10-19T00:00:00.000000+00:00\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_STR(store_messages(s, 100)->content, "yes edited");
+    ASSERT_EQ_INT(store_messages(s, 100)->reply_to, 19);
+    ASSERT_EQ_STR(store_messages(s, 100)->reply_name, "alice");
+    ASSERT_EQ_STR(store_messages(s, 100)->reply_text, "the original");
+    gw_free(g); store_free(s);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -165,4 +178,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_presence_updates_member();
     g_tests_run++; test_events_reactions();
     g_tests_run++; test_events_typing();
+    g_tests_run++; test_events_reply_preserved_on_edit();
 }

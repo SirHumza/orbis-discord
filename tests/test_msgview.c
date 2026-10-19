@@ -171,6 +171,23 @@ TEST(test_msgview_reaction_row){
     mv_free(&L);
 }
 
+TEST(test_msgview_reply_row){
+    message a = mkmsg(1500000000000ULL, 1, 7, "yes", 0);
+    mv_layout L;
+    a.reply_to = 99;
+    snprintf(a.reply_name, sizeof a.reply_name, "alice");
+    snprintf(a.reply_text, sizeof a.reply_text, "the original");
+    mv_init(&L);
+    ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 4);
+    ASSERT_EQ_INT(L.lines[1].author, 1);
+    ASSERT_EQ_INT(L.lines[1].reply, -1);
+    ASSERT_EQ_INT(L.lines[2].reply, 1);
+    ASSERT_EQ_INT(L.lines[3].len, 3);
+    ASSERT_EQ_INT(L.height,
+                  MV_SEP_H + MV_LINE_H + MV_REPLY_H + MV_LINE_H + MV_GROUP_GAP);
+    mv_free(&L);
+}
+
 TEST(test_msgview_time_and_day_strings){
     char buf[64];
     mv_time_str(1420070400000ULL, buf, sizeof buf);
@@ -195,5 +212,6 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_attachment_rows();
     g_tests_run++; test_msgview_embed_rows();
     g_tests_run++; test_msgview_reaction_row();
+    g_tests_run++; test_msgview_reply_row();
     g_tests_run++; test_msgview_time_and_day_strings();
 }

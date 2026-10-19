@@ -83,6 +83,7 @@ static int push_line(mv_layout *L, const message *m, int is_sep, int author,
     ln->emb = -1;
     ln->emb_kind = 0;
     ln->react = -1;
+    ln->reply = -1;
     return 1;
 }
 
@@ -185,6 +186,11 @@ int mv_build(mv_layout *L, const message *head, int width_px,
         if(!grouped){
             push_line(L, m, 0, 1, 0, 0, y);
             y += MV_LINE_H;
+        }
+        if(m->reply_to){
+            push_line(L, m, 0, 0, 0, 0, y);
+            L->lines[L->n - 1].reply = 1;
+            y += MV_REPLY_H;
         }
         y = wrap_content(L, m, m->content, strlen(m->content),
                          width_px, fn, ud, y, -1);

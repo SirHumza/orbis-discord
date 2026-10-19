@@ -123,6 +123,11 @@ static int on_message_update(gateway *g, jl_val_t *d){
             m.nreact = old->nreact;
             memcpy(m.react, old->react, sizeof m.react);
         }
+        if(!m.reply_to){
+            m.reply_to = old->reply_to;
+            memcpy(m.reply_name, old->reply_name, sizeof m.reply_name);
+            memcpy(m.reply_text, old->reply_text, sizeof m.reply_text);
+        }
     }
     m.has_edit = 1;
     store_put_message(gw_store(g), &m);
