@@ -169,6 +169,7 @@ typedef struct {
     int tview_i;
     uint64_t tview_chan;
     uint64_t tview_guild;
+    int tview_forum;
     thread_item tview_list[16];
     uint64_t thread_chan;
     int thread_jump;
@@ -1008,6 +1009,10 @@ static void tview_open(main_ctx *L, uint64_t chan, uint64_t guild){
     L->tview_n = 0;
     L->tview_chan = chan;
     L->tview_guild = guild;
+    {
+        const channel *tc = store_channel(L->app->st, chan);
+        L->tview_forum = tc && tc->type == 15;
+    }
     f = calloc(1, sizeof *f);
     if(!f) return;
     f->ctx = L;
@@ -1691,7 +1696,8 @@ static void view_build(main_ctx *L, frame_view *v){
             if(v->nt < 64) v->text[v->nt++] = cats[c];
             for(i = 0; i < nc && v->nt < 64; i++){
                 const channel *c2 = store_channel(L->app->st, cids[i]);
-                if(!c2 || c2->type != 0 || c2->parent != cats[c]->id) continue;
+                if(!c2 || (c2->type != 0 && c2->type != 15) ||
+                   c2->parent != cats[c]->id) continue;
                 emitted[i] = 1;
                 if(!cat_collapsed(L, cats[c]->id) && can_view_chan(L, c2))
                     v->text[v->nt++] = c2;
@@ -1701,7 +1707,8 @@ static void view_build(main_ctx *L, frame_view *v){
             const channel *c2;
             if(emitted[i]) continue;
             c2 = store_channel(L->app->st, cids[i]);
-            if(c2 && c2->type == 0 && can_view_chan(L, c2))
+            if(c2 && (c2->type == 0 || c2->type == 15) &&
+               can_view_chan(L, c2))
                 v->text[v->nt++] = c2;
         }
     }
@@ -2217,11 +2224,14 @@ static void draw_tview(main_ctx *L){
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
     ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
-    ui_text(x + 20, y + 16, "Active threads", UI_TEXT, 18);
+    ui_text(x + 20, y + 16, L->tview_forum ? "Forum posts" : "Active threads",
+            UI_TEXT, 18);
     if(L->tview_pending){
-        ui_text(x + 20, y + 60, "Loading threads...", UI_TEXT_DIM, 16);
+        ui_text(x + 20, y + 60, "Loading...", UI_TEXT_DIM, 16);
     } else if(L->tview_n == 0){
-        ui_text(x + 20, y + 60, "No active threads", UI_TEXT_DIM, 16);
+        ui_text(x + 20, y + 60, L->tview_forum ? "No posts yet"
+                                               : "No active threads",
+                UI_TEXT_DIM, 16);
     } else {
         first = L->tview_i - 4;
         if(first < 0) first = 0;
@@ -2538,7 +2548,10 @@ static void draw_main(main_ctx *L, const frame_view *v){
         ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2,
                 CHAT_Y0 + CHAT_VIEW_H / 2 - 8, hint, UI_TEXT_DIM, 16);
     } else if(L->mv.n == 0){
-        const char *hint = L->hist_pending ? "Loading messages..." : "No messages yet";
+        const char *hint = v->active->type == 15
+                               ? "TRIANGLE to browse forum posts"
+                               : (L->hist_pending ? "Loading messages..."
+                                                  : "No messages yet");
         ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2,
                 CHAT_Y0 + CHAT_VIEW_H / 2 - 8, hint, UI_TEXT_DIM, 16);
     } else {
@@ -2560,7 +2573,9 @@ static void draw_main(main_ctx *L, const frame_view *v){
                  COMPOSER_H - 34, 8, UI_CHANNEL_BG);
         if(L->focus == 2)
             ui_rect(CHAT_X + MSG_PAD, cy + 26, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
-        if(v->active)
+        if(v->active && v->active->type == 15)
+            snprintf(buf, sizeof buf, "Select a post to reply");
+        else if(v->active)
             snprintf(buf, sizeof buf, "Message %s%s", v->dm ? "@" : "#",
                      v->active->name);
         else
@@ -2724,7 +2739,8 @@ int screen_main_run(app_state *st){
             L.last_rev = 0;
             L.mv.n = 0;
             L.mv.height = 0;
-            fetch_history(&L, L.chan_loaded, 0);
+            if(v.active->type != 15)
+                fetch_history(&L, L.chan_loaded, 0);
         }
 
         if(L.up && L.identified && !L.guilds_loaded && !L.guilds_pending &&
@@ -3044,7 +3060,9 @@ int screen_main_run(app_state *st){
                     }
                 } else if(e == IE_SELECT){
                     if(L.focus == 2 && v.active){
-                        if(!can_send_chan(&L, v.active)){
+                        if(v.active->type == 15){
+                            set_status(&L, "Select a post to reply");
+                        } else if(!can_send_chan(&L, v.active)){
                             set_status(&L, "No permission to send");
                         } else {
                             char text[1024];
@@ -3061,13 +3079,18 @@ int screen_main_run(app_state *st){
                     } else if(L.focus == 1 && v.nt > 0 &&
                               v.text[v.ci]->type == 4){
                         cat_toggle(&L, v.text[v.ci]->id);
+                    } else if(L.focus == 1 && v.nt > 0 &&
+                              v.text[v.ci]->type == 15){
+                        tview_open(&L, v.text[v.ci]->id,
+                                   v.guilds[v.gi]->id);
                     }
                 } else if(e == IE_VIEW){
                     if(L.focus == 2 && v.active)
                         open_viewer(&L, v.active->id);
                     else if(L.focus == 1 && v.active && v.active->type == 3)
                         gview_open(&L, v.active->id);
-                    else if(L.focus == 1 && v.active && v.active->type == 0)
+                    else if(L.focus == 1 && v.active &&
+                            (v.active->type == 0 || v.active->type == 15))
                         tview_open(&L, v.active->id, v.guilds[v.gi]->id);
                 } else if(e == IE_MENU){
                     if(L.focus == 2 && v.active)
