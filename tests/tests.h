@@ -16,5 +16,6 @@ void run_ws_streaming_tests(void);
 void run_json_b64_tests(void);
 void run_store_tests(void);
 void run_gateway_tests(void);
+void run_rest_tests(void);
 
 #endif
