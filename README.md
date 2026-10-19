@@ -37,6 +37,7 @@ rest of the feature set are the next milestones.
 | Pins: L2 overlay, pinned message list, CROSS jumps to the message | Done | PS4 elf |
 | Message search: R2 query overlay (guild/channel endpoint), CROSS jumps | Done | PS4 elf |
 | Friends: OPTIONS overlay from relationships, CROSS opens/creates a DM | Done | PS4 elf |
+| Presence: L3 status picker (online/idle/dnd/invisible) via gateway op 3 | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -53,7 +54,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (139 checks) + fixtures
+tests/        host test suite (140 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -113,7 +114,8 @@ Phase 2, messaging parity:
 - [x] Avatars/guild icons from the CDN, role colors on author/member names
 - [ ] Member profiles, role hoisting/sections
 - [x] DM list (REST), friends overlay (OPTIONS) with open/create DM
-- [ ] Group DM management, presence control
+- [x] Presence control (L3 picker, gateway op 3)
+- [ ] Group DM management
 - [ ] Threads, forums, invites, channel categories, permissions
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback

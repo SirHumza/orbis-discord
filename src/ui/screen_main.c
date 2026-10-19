@@ -142,6 +142,9 @@ typedef struct {
     friend_entry friends_list[FRIEND_MAX];
     int friend_n;
     int friend_i;
+    char presence[16];
+    int status_menu;
+    int status_i;
 } main_ctx;
 
 typedef struct {
@@ -161,6 +164,22 @@ static uint64_t mono_ms(void){
 
 static void set_status(main_ctx *L, const char *s){
     snprintf(L->status, sizeof L->status, "%s", s);
+}
+
+static const char *STATUS_CHOICES[] = {
+    "online", "idle", "dnd", "invisible"
+};
+
+static const char *STATUS_LABELS[] = {
+    "Online", "Idle", "Do Not Disturb", "Invisible"
+};
+
+static void send_presence(main_ctx *L){
+    char payload[160];
+    int n;
+    if(!L->up || !L->identified || !L->presence[0]) return;
+    n = gw_presence_payload(L->presence, payload, sizeof payload);
+    if(n > 0) ws_send_text(&L->ws, payload, (size_t)n);
 }
 
 static void first_codepoint(const char *s, char *out, size_t cap){
@@ -1373,6 +1392,21 @@ static const char *friend_type_label(int type){
     }
 }
 
+static void draw_status_menu(main_ctx *L){
+    int n = (int)(sizeof STATUS_CHOICES / sizeof STATUS_CHOICES[0]);
+    int w = 320, item_h = 40, h = 52 + n * item_h;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 16, y + 14, "Set status", UI_TEXT, 16);
+    for(i = 0; i < n; i++){
+        int iy = y + 44 + i * item_h;
+        if(i == L->status_i) ui_rrect(x + 8, iy, w - 16, item_h - 6, 6,
+                                      UI_BLURPLE);
+        ui_text(x + 20, iy + 6, STATUS_LABELS[i], UI_TEXT, 16);
+    }
+}
+
 static void draw_friends(main_ctx *L){
     int w = 720, h = 560;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
@@ -1716,6 +1750,7 @@ int screen_main_run(app_state *st){
                 if(ev & GW_EV_READY){
                     log_msg("gw: ready (%s)", gw_self_name(g));
                     set_status(&L, "Online");
+                    send_presence(&L);
                 }
                 if(ev & GW_EV_RECONNECT){
                     gw_drop(&L, now, "op7");
@@ -1877,6 +1912,24 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.status_menu){
+                    int n = (int)(sizeof STATUS_CHOICES /
+                                  sizeof STATUS_CHOICES[0]);
+                    if(e == IE_UP || e == IE_DOWN){
+                        L.status_i += e == IE_UP ? -1 : 1;
+                        if(L.status_i < 0) L.status_i = n - 1;
+                        if(L.status_i >= n) L.status_i = 0;
+                    } else if(e == IE_SELECT){
+                        snprintf(L.presence, sizeof L.presence, "%s",
+                                 STATUS_CHOICES[L.status_i]);
+                        L.status_menu = 0;
+                        send_presence(&L);
+                    } else if(e == IE_BACK || e == IE_MENU ||
+                              e == IE_STATUS){
+                        L.status_menu = 0;
+                    }
+                    continue;
+                }
                 if(L.friends){
                     if(e == IE_UP && L.friend_i > 0){
                         L.friend_i--;
@@ -1969,6 +2022,9 @@ int screen_main_run(app_state *st){
                         search_prompt(&L, v.active->id, 0);
                 } else if(e == IE_FRIENDS){
                     friends_open(&L);
+                } else if(e == IE_STATUS){
+                    L.status_menu = 1;
+                    L.status_i = 0;
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1983,6 +2039,7 @@ int screen_main_run(app_state *st){
         if(L.pins) draw_pins(&L);
         if(L.search) draw_search(&L);
         if(L.friends) draw_friends(&L);
+        if(L.status_menu) draw_status_menu(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

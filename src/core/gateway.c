@@ -130,6 +130,15 @@ int gw_identify(gateway *g, char *out, size_t cap){
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
+int gw_presence_payload(const char *status, char *out, size_t cap){
+    int n;
+    if(!out || !status || !*status) return 0;
+    n = snprintf(out, cap,
+                 "{\"op\":3,\"d\":{\"status\":\"%s\",\"since\":0,"
+                 "\"activities\":[],\"afk\":false}}", status);
+    return n > 0 && (size_t)n < cap ? n : 0;
+}
+
 int gw_resume(gateway *g, char *out, size_t cap){
     int n;
     if(!g || !out || !g->session_id[0]) return 0;

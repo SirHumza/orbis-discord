@@ -8,7 +8,7 @@ typedef enum {
     IE_UP, IE_RIGHT, IE_DOWN, IE_LEFT,
     IE_SELECT, IE_BACK,
     IE_PGUP, IE_PGDN, IE_BOTTOM, IE_VIEW, IE_MENU, IE_PINS, IE_SEARCH,
-    IE_FRIENDS
+    IE_FRIENDS, IE_STATUS
 } input_event;
 
 int input_init(void);

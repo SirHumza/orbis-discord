@@ -20,6 +20,7 @@ int gw_feed(gateway *, const char *json, size_t len);
 const char *gw_self_name(gateway *);
 uint64_t gw_self_id(gateway *);
 int gw_identify(gateway *, char *out, size_t cap);
+int gw_presence_payload(const char *status, char *out, size_t cap);
 int gw_resume(gateway *, char *out, size_t cap);
 const char *gw_ack(gateway *, size_t *len);
 int gw_expired_heartbeat(gateway *);

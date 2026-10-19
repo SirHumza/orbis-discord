@@ -202,6 +202,16 @@ TEST(test_events_role_colors){
     gw_free(g); store_free(s);
 }
 
+TEST(test_gateway_presence_payload){
+    char out[160];
+    int n = gw_presence_payload("idle", out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"op\":3,\"d\":{\"status\":\"idle\",\"since\":0,"
+                       "\"activities\":[],\"afk\":false}}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    ASSERT_EQ_INT(gw_presence_payload(NULL, out, sizeof out), 0);
+    ASSERT_EQ_INT(gw_presence_payload("idle", out, 8), 0);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -217,4 +227,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_reply_preserved_on_edit();
     g_tests_run++; test_events_mentions();
     g_tests_run++; test_events_role_colors();
+    g_tests_run++; test_gateway_presence_payload();
 }
