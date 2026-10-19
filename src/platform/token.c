@@ -24,6 +24,10 @@ int token_load(char *out, size_t cap){
     return out[0] != 0;
 }
 
+void token_clear(void){
+    unlink(ORBIS_TOKEN_PATH);
+}
+
 int token_save(const char *token){
     int fd;
     size_t n;

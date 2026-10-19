@@ -152,6 +152,23 @@ TEST(test_store_channels_for_guild){
     store_free(st);
 }
 
+TEST(test_store_revision_tracks_mutations){
+    store *st = store_new();
+    message a = {.id = 10, .chan = 1, .author_id = 7};
+    uint64_t r0 = store_revision(st);
+    strcpy(a.content, "one");
+    store_put_message(st, &a);
+    ASSERT_TRUE(store_revision(st) != r0);
+    r0 = store_revision(st);
+    strcpy(a.content, "two");
+    store_put_message(st, &a);
+    ASSERT_TRUE(store_revision(st) != r0);
+    r0 = store_revision(st);
+    store_del_message(st, 1, 10);
+    ASSERT_TRUE(store_revision(st) != r0);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -163,4 +180,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_grouping();
     g_tests_run++; test_store_utf8();
     g_tests_run++; test_store_channels_for_guild();
+    g_tests_run++; test_store_revision_tracks_mutations();
 }

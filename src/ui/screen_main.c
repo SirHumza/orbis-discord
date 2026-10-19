@@ -84,9 +84,7 @@ typedef struct {
     int focus;
     char status[64];
     mv_layout mv;
-    const message *last_head;
-    const message *last_tail;
-    int last_count;
+    uint64_t last_rev;
     int stick;
     int prepend;
     int top_px;
@@ -348,17 +346,6 @@ static void fetch_members(main_ctx *L, uint64_t guild_id){
     }
 }
 
-static const message *msg_tail(const message *m){
-    while(m && m->next) m = m->next;
-    return m;
-}
-
-static int msg_count(const message *m){
-    int n = 0;
-    while(m){ n++; m = m->next; }
-    return n;
-}
-
 static void put_message_json(store *st, uint64_t chan, jl_val_t *o){
     jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
     jl_val_t *content = o ? jl_obj_get(o, "content") : NULL;
@@ -529,9 +516,7 @@ static void view_rebuild(main_ctx *L, uint64_t chan){
     L->prepend = 0;
     if(L->stick) L->top_px = L->mv.height;
     scroll_clamp(L);
-    L->last_head = head;
-    L->last_tail = msg_tail(head);
-    L->last_count = msg_count(head);
+    L->last_rev = store_revision(L->app->st);
 }
 
 static void gw_drop(main_ctx *L, uint64_t now, const char *why){
@@ -773,6 +758,7 @@ static void draw_main(main_ctx *L, const frame_view *v){
 int screen_main_run(app_state *st){
     main_ctx L;
     frame_view v;
+    int auth_failed = 0;
     input_init();
     memset(&L, 0, sizeof L);
     L.app = st;
@@ -825,6 +811,13 @@ int screen_main_run(app_state *st){
                     char why[32];
                     int code = n >= 2 ? (((unsigned char)L.recv[0] << 8) |
                                          (unsigned char)L.recv[1]) : 1006;
+                    if(code == 4004){
+                        log_msg("gw: authentication failed (4004)");
+                        ws_close(&L.ws);
+                        L.up = 0;
+                        auth_failed = 1;
+                        break;
+                    }
                     snprintf(why, sizeof why, "close %d", code);
                     gw_drop(&L, now, why);
                     break;
@@ -870,6 +863,7 @@ int screen_main_run(app_state *st){
                 }
             }
         }
+        if(auth_failed) break;
 
         view_build(&L, &v);
 
@@ -882,9 +876,7 @@ int screen_main_run(app_state *st){
             L.hist_before = 0;
             L.hist_pending = 0;
             L.hist_older_pending = 0;
-            L.last_head = NULL;
-            L.last_tail = NULL;
-            L.last_count = -1;
+            L.last_rev = 0;
             L.mv.n = 0;
             L.mv.height = 0;
             fetch_history(&L, L.chan_loaded, 0);
@@ -912,12 +904,8 @@ int screen_main_run(app_state *st){
         rest_pump(st->rest, now);
         view_build(&L, &v);
 
-        if(L.chan_loaded){
-            const message *head = store_messages(st->st, L.chan_loaded);
-            if(head != L.last_head || msg_tail(head) != L.last_tail ||
-               msg_count(head) != L.last_count)
-                view_rebuild(&L, L.chan_loaded);
-        }
+        if(L.chan_loaded && store_revision(st->st) != L.last_rev)
+            view_rebuild(&L, L.chan_loaded);
 
         {
             input_event evs[16];
@@ -981,5 +969,5 @@ int screen_main_run(app_state *st){
 
     free(L.recv);
     ws_close(&L.ws);
-    return 0;
+    return auth_failed ? 1 : 0;
 }

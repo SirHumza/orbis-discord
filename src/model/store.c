@@ -20,6 +20,7 @@ struct store {
     size_t nguilds, capguilds;
     member *members;
     size_t nmembers, capmembers;
+    uint64_t rev;
 };
 
 store *store_new(void){ return calloc(1, sizeof(store)); }
@@ -72,6 +73,7 @@ void store_put_message(store *st, const message *in){
         memcpy(cur->content, in->content, sizeof cur->content);
         cur->edited_at = in->edited_at;
         cur->has_edit = in->has_edit;
+        st->rev++;
         return;
     }
     m = malloc(sizeof *m);
@@ -84,6 +86,7 @@ void store_put_message(store *st, const message *in){
     if(prev) prev->next = m; else c->head = m;
     if(!cur) c->tail = m;
     if(cur) cur->is_grouped = can_group(m, cur);
+    st->rev++;
 }
 
 void store_del_message(store *st, uint64_t chan, uint64_t id){
@@ -100,6 +103,7 @@ void store_del_message(store *st, uint64_t chan, uint64_t id){
     if(cur->next && prev) cur->next->is_grouped = can_group(prev, cur->next);
     else if(cur->next) cur->next->is_grouped = 0;
     free(cur);
+    st->rev++;
 }
 
 void store_del_pending(store *st, uint64_t chan, uint64_t nonce){
@@ -116,7 +120,10 @@ void store_del_pending(store *st, uint64_t chan, uint64_t nonce){
     if(cur->next && prev) cur->next->is_grouped = can_group(prev, cur->next);
     else if(cur->next) cur->next->is_grouped = 0;
     free(cur);
+    st->rev++;
 }
+
+uint64_t store_revision(store *st){ return st ? st->rev : 0; }
 
 const message *store_messages(store *st, uint64_t chan){
     chan_msgs *c = st ? msgs_for(st, chan, 0) : NULL;

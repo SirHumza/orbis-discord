@@ -42,6 +42,7 @@ void store_put_message(store *, const message *);
 void store_del_message(store *, uint64_t chan, uint64_t id);
 void store_del_pending(store *, uint64_t chan, uint64_t nonce);
 const message *store_messages(store *, uint64_t chan);
+uint64_t store_revision(store *);
 void store_put_channel(store *, const channel *);
 const channel *store_channel(store *, uint64_t id);
 void store_put_guild(store *, const guild *);
