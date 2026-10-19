@@ -15,5 +15,6 @@ extern int g_tests_run, g_tests_failed;
 void run_ws_streaming_tests(void);
 void run_json_b64_tests(void);
 void run_store_tests(void);
+void run_gateway_tests(void);
 
 #endif

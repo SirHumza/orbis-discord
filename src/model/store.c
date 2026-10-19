@@ -2,6 +2,7 @@
 #include "snowflake.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define GROUP_WINDOW_MS 300000ULL
 
@@ -185,4 +186,22 @@ size_t store_members(store *st, uint64_t guild_id, const member **out, size_t ca
     for(i = 0; i < st->nmembers && n < cap; i++)
         if(st->members[i].guild == guild_id) out[n++] = &st->members[i];
     return n;
+}
+
+void store_set_member_online(store *st, uint64_t guild_id, uint64_t user_id, int online){
+    size_t i;
+    if(!st) return;
+    for(i = 0; i < st->nmembers; i++)
+        if(st->members[i].guild == guild_id && st->members[i].user == user_id){
+            st->members[i].online = online; return;
+        }
+}
+
+void store_set_member_name(store *st, uint64_t guild_id, uint64_t user_id, const char *name){
+    size_t i;
+    if(!st || !name) return;
+    for(i = 0; i < st->nmembers; i++)
+        if(st->members[i].guild == guild_id && st->members[i].user == user_id){
+            snprintf(st->members[i].name, sizeof st->members[i].name, "%s", name); return;
+        }
 }
