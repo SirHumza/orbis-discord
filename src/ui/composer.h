@@ -12,5 +12,9 @@ int composer_payload(const char *content, uint64_t nonce, char *out, size_t cap)
 int composer_payload_reply(const char *content, uint64_t nonce, uint64_t reply_id,
                            uint64_t reply_chan, char *out, size_t cap);
 int composer_payload_edit(const char *content, char *out, size_t cap);
+/* {"recipients":["id1","id2"]} for POST /users/@me/channels. */
+int composer_group_dm(const uint64_t *ids, int n, char *out, size_t cap);
+/* {"name":"..."} with JSON escapes, for PATCH /channels/{id}. */
+int composer_name_payload(const char *name, char *out, size_t cap);
 
 #endif

@@ -178,6 +178,7 @@ typedef struct {
     friend_entry friends_list[FRIEND_MAX];
     int friend_n;
     int friend_i;
+    int friend_sel[FRIEND_MAX];
     char presence[16];
     int status_menu;
     int status_i;
@@ -756,6 +757,7 @@ static void friends_cb(int status, const char *body, void *ud){
 static void friends_open(main_ctx *L){
     L->friends = 1;
     L->friend_i = 0;
+    memset(L->friend_sel, 0, sizeof L->friend_sel);
     if(L->friends_loaded || L->friends_pending) return;
     L->friends_pending = 1;
     if(rest_send(L->app->rest, "GET", "/api/v9/users/@me/relationships",
@@ -786,12 +788,23 @@ static void dm_cb(int status, const char *body, void *ud){
         jl_val_t *id = jl_obj_get(v, "id");
         jl_val_t *type = jl_obj_get(v, "type");
         if(id && id->type == JL_STRING){
+            jl_val_t *rname = jl_obj_get(v, "name");
+            jl_val_t *ricon = jl_obj_get(v, "icon");
             memset(&ch, 0, sizeof ch);
             ch.id = sn_parse(id->str);
             ch.type = type && type->type == JL_NUMBER ? (int)type->num : 1;
             ch.position = -1;
-            snprintf(ch.name, sizeof ch.name, "%s", f->name);
-            snprintf(ch.avatar_url, sizeof ch.avatar_url, "%s", f->avatar);
+            if(ch.type == 3){
+                snprintf(ch.name, sizeof ch.name, "%s",
+                         rname && rname->type == JL_STRING && rname->str[0]
+                             ? rname->str : f->name);
+                cdn_channel_icon_url(ch.avatar_url, sizeof ch.avatar_url, ch.id,
+                                     ricon && ricon->type == JL_STRING
+                                         ? ricon->str : "");
+            } else {
+                snprintf(ch.name, sizeof ch.name, "%s", f->name);
+                snprintf(ch.avatar_url, sizeof ch.avatar_url, "%s", f->avatar);
+            }
             store_put_channel(L->app->st, &ch);
             n = store_dm_channels(L->app->st, dms, 64);
             for(i = 0; i < n; i++)
@@ -828,6 +841,44 @@ static void friend_dm(main_ctx *L, const friend_entry *fr){
         return;
     }
     set_status(L, "Opening DM...");
+}
+
+static void group_create(main_ctx *L, const uint64_t *ids, int n){
+    char payload[1664];
+    dm_open *f;
+    if(!ids || n < 1) return;
+    if(composer_group_dm(ids, n, payload, sizeof payload) < 0){
+        set_status(L, "Group DM failed");
+        return;
+    }
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    snprintf(f->name, sizeof f->name, "Group DM");
+    if(rest_send(L->app->rest, "POST", "/api/v9/users/@me/channels",
+                 payload, dm_cb, f) != 0){
+        free(f);
+        set_status(L, "Group DM failed");
+        return;
+    }
+    set_status(L, "Creating group...");
+}
+
+static void group_rename(main_ctx *L, const channel *ch){
+    char name[100];
+    char payload[256];
+    char path[96];
+    memset(name, 0, sizeof name);
+    if(!ime_prompt("Group name", ch->name, name, sizeof name)) return;
+    if(!name[0]) return;
+    if(composer_name_payload(name, payload, sizeof payload) < 0) return;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu",
+             (unsigned long long)ch->id);
+    if(rest_send(L->app->rest, "PATCH", path, payload, NULL, NULL) != 0){
+        set_status(L, "Rename failed");
+        return;
+    }
+    set_status(L, "Renaming...");
 }
 
 static void messages_cb(int status, const char *body, void *ud){
@@ -1739,9 +1790,14 @@ static void draw_friends(main_ctx *L){
             ui_text(x + 64, ry, fr->name, UI_TEXT, 16);
             snprintf(label, sizeof label, "%s", friend_type_label(fr->type));
             ui_text(x + 64, ry + 20, label, UI_TEXT_DIM, 12);
+            ui_rrect(x + w - 54, ry + 6, 22, 22, 6,
+                      L->friend_sel[i] ? UI_BLURPLE : UI_CHANNEL_BG);
+            if(L->friend_sel[i])
+                ui_rect(x + w - 49, ry + 11, 12, 12, UI_TEXT);
         }
     }
-    ui_text(x + 20, y + h - 30, "CROSS message   CIRCLE close",
+    ui_text(x + 20, y + h - 30,
+            "CROSS open   SQUARE select   CIRCLE close",
             UI_TEXT_DIM, 12);
 }
 
@@ -2375,10 +2431,17 @@ int screen_main_run(app_state *st){
                         L.friend_i--;
                     } else if(e == IE_DOWN && L.friend_i + 1 < L.friend_n){
                         L.friend_i++;
+                    } else if(e == IE_MENU && L.friend_n > 0){
+                        L.friend_sel[L.friend_i] = !L.friend_sel[L.friend_i];
                     } else if(e == IE_SELECT && L.friend_n > 0){
-                        friend_dm(&L, &L.friends_list[L.friend_i]);
-                    } else if(e == IE_BACK || e == IE_MENU ||
-                              e == IE_FRIENDS){
+                        uint64_t ids[FRIEND_MAX];
+                        int k = 0, j;
+                        for(j = 0; j < L.friend_n; j++)
+                            if(L.friend_sel[j] && L.friends_list[j].type != 2)
+                                ids[k++] = L.friends_list[j].id;
+                        if(k > 0) group_create(&L, ids, k);
+                        else friend_dm(&L, &L.friends_list[L.friend_i]);
+                    } else if(e == IE_BACK || e == IE_FRIENDS){
                         L.friends = 0;
                     }
                     continue;
@@ -2482,6 +2545,8 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_MENU){
                     if(L.focus == 2 && v.active)
                         sel_begin(&L, v.active->id);
+                    else if(L.focus == 1 && v.active && v.active->type == 3)
+                        group_rename(&L, v.active);
                 } else if(e == IE_PINS){
                     if(L.focus == 2 && v.active)
                         pins_open(&L, v.active->id);

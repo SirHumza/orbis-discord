@@ -67,3 +67,53 @@ int composer_payload_reply(const char *content, uint64_t nonce, uint64_t reply_i
 int composer_payload_edit(const char *content, char *out, size_t cap){
     return payload_build(content, 0, 0, 0, 1, out, cap);
 }
+
+int composer_group_dm(const uint64_t *ids, int n, char *out, size_t cap){
+    size_t o;
+    int i, w;
+    if(!ids || n <= 0 || !out || cap < 20) return -1;
+    o = (size_t)snprintf(out, cap, "{\"recipients\":[");
+    if(o >= cap) return -1;
+    for(i = 0; i < n; i++){
+        w = snprintf(out + o, cap - o, "%s\"%llu\"", i ? "," : "",
+                     (unsigned long long)ids[i]);
+        if(w < 0 || o + (size_t)w >= cap) return -1;
+        o += (size_t)w;
+    }
+    if(o + 2 >= cap) return -1;
+    out[o++] = ']';
+    out[o++] = '}';
+    out[o] = 0;
+    return (int)o;
+}
+
+int composer_name_payload(const char *name, char *out, size_t cap){
+    size_t n = 0;
+    const unsigned char *s = (const unsigned char *)(name ? name : "");
+    if(!out || cap < 12) return -1;
+    out[0] = 0;
+    #define PUT(c) do { if(n + 1 >= cap) return -1; out[n++] = (char)(c); out[n] = 0; } while(0)
+    PUT('{'); PUT('"'); PUT('n'); PUT('a'); PUT('m'); PUT('e');
+    PUT('"'); PUT(':'); PUT('"');
+    while(*s){
+        unsigned char c = *s++;
+        if(c == '"' || c == '\\'){
+            PUT('\\'); PUT((char)c);
+        } else if(c == '\n'){
+            PUT('\\'); PUT('n');
+        } else if(c == '\r'){
+            PUT('\\'); PUT('r');
+        } else if(c == '\t'){
+            PUT('\\'); PUT('t');
+        } else if(c < 0x20){
+            char esc[8];
+            snprintf(esc, sizeof esc, "\\u%04x", c);
+            PUT(esc[0]); PUT(esc[1]); PUT(esc[2]); PUT(esc[3]); PUT(esc[4]); PUT(esc[5]);
+        } else {
+            PUT((char)c);
+        }
+    }
+    PUT('"'); PUT('}');
+    #undef PUT
+    return (int)n;
+}

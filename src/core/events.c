@@ -219,6 +219,7 @@ static int on_presence(gateway *g, jl_val_t *d){
 
 static int on_channel_put(gateway *g, jl_val_t *d){
     channel ch;
+    const channel *old;
     memset(&ch, 0, sizeof ch);
     ch.id = gw_u64(d, "id");
     if(!ch.id) return GW_EV_NONE;
@@ -226,6 +227,15 @@ static int on_channel_put(gateway *g, jl_val_t *d){
     ch.type = gw_num(d, "type");
     ch.position = gw_num(d, "position");
     cp(ch.name, sizeof ch.name, gw_string(d, "name"));
+    if(!ch.name[0] || !ch.guild){
+        old = store_channel(gw_store(g), ch.id);
+        if(old){
+            if(!ch.name[0]) cp(ch.name, sizeof ch.name, old->name);
+            cp(ch.avatar_url, sizeof ch.avatar_url, old->avatar_url);
+            if(!ch.guild) ch.guild = old->guild;
+            if(!ch.type) ch.type = old->type;
+        }
+    }
     store_put_channel(gw_store(g), &ch);
     return GW_EV_NONE;
 }

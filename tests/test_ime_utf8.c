@@ -101,6 +101,36 @@ TEST(test_composer_payload_edit){
     ASSERT_EQ_INT(n, (int)strlen(out));
 }
 
+TEST(test_composer_group_dm){
+    char out[128];
+    uint64_t ids[2] = { 111, 222 };
+    int n = composer_group_dm(ids, 2, out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"recipients\":[\"111\",\"222\"]}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    n = composer_group_dm(ids, 1, out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"recipients\":[\"111\"]}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    ASSERT_EQ_INT(composer_group_dm(NULL, 2, out, sizeof out), -1);
+    ASSERT_EQ_INT(composer_group_dm(ids, 0, out, sizeof out), -1);
+    ASSERT_EQ_INT(composer_group_dm(ids, 1, out, 5), -1);
+    ASSERT_EQ_INT(composer_group_dm(ids, 2, out, 27), -1);
+}
+
+TEST(test_composer_name_payload){
+    char out[128];
+    int n = composer_name_payload("My \"crew\"", out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"name\":\"My \\\"crew\\\"\"}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    n = composer_name_payload("", out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"name\":\"\"}");
+    ASSERT_EQ_INT(n, 11);
+    n = composer_name_payload(NULL, out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"name\":\"\"}");
+    ASSERT_EQ_INT(n, 11);
+    ASSERT_EQ_INT(composer_name_payload("x", out, 4), -1);
+    ASSERT_EQ_INT(composer_name_payload("hello", out, 15), -1);
+}
+
 void run_ime_utf8_tests(void){
     g_tests_run++; test_utf16_ascii();
     g_tests_run++; test_utf16_two_byte();
@@ -114,4 +144,6 @@ void run_ime_utf8_tests(void){
     g_tests_run++; test_composer_payload_overflow();
     g_tests_run++; test_composer_payload_reply();
     g_tests_run++; test_composer_payload_edit();
+    g_tests_run++; test_composer_group_dm();
+    g_tests_run++; test_composer_name_payload();
 }
