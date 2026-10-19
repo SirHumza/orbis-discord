@@ -39,6 +39,7 @@ typedef struct message {
     uint64_t reply_to;
     char reply_name[64];
     char reply_text[96];
+    int mentions_me;
     uint64_t edited_at;
     int has_edit;
     int is_grouped;

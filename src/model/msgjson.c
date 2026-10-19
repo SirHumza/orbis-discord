@@ -24,6 +24,96 @@ static int jbool(jl_val_t *v){
     return v && v->type == JL_BOOL ? (int)v->num : 0;
 }
 
+static size_t copyb(char *dst, size_t o, size_t cap, const char *src, size_t n){
+    if(o >= cap - 1) return o;
+    if(n > cap - 1 - o) n = cap - 1 - o;
+    memcpy(dst + o, src, n);
+    return o + n;
+}
+
+static const char *member_name(store *st, uint64_t chan, uint64_t user){
+    const channel *ch = store_channel(st, chan);
+    const member *ms[200];
+    size_t n, i;
+    if(!ch || !ch->guild) return NULL;
+    n = store_members(st, ch->guild, ms, 200);
+    for(i = 0; i < n; i++)
+        if(ms[i]->user == user) return ms[i]->name;
+    return NULL;
+}
+
+void msg_resolve_mentions(store *st, message *m, uint64_t self_id){
+    char out[sizeof m->content];
+    size_t o = 0;
+    const char *s;
+    if(!m) return;
+    m->mentions_me = 0;
+    s = m->content;
+    while(*s){
+        if(s[0] == '<' && s[1] == '@'){
+            int role = s[2] == '&';
+            const char *p = s + (s[2] == '!' || role ? 3 : 2);
+            const char *q = p;
+            uint64_t id = 0;
+            while(*q >= '0' && *q <= '9'){
+                id = id * 10 + (uint64_t)(*q - '0');
+                q++;
+            }
+            if(q > p && *q == '>'){
+                o = copyb(out, o, sizeof out, "@", 1);
+                if(role){
+                    o = copyb(out, o, sizeof out, "role", 4);
+                } else {
+                    const char *nm = member_name(st, m->chan, id);
+                    if(nm) o = copyb(out, o, sizeof out, nm, strlen(nm));
+                    else o = copyb(out, o, sizeof out, p, (size_t)(q - p));
+                    if(id == self_id) m->mentions_me = 1;
+                }
+                s = q + 1;
+                continue;
+            }
+        }
+        if(s[0] == '<' && s[1] == '#'){
+            const char *q = s + 2;
+            const channel *ch;
+            uint64_t id = 0;
+            while(*q >= '0' && *q <= '9'){
+                id = id * 10 + (uint64_t)(*q - '0');
+                q++;
+            }
+            if(q > s + 2 && *q == '>'){
+                ch = store_channel(st, id);
+                o = copyb(out, o, sizeof out, "#", 1);
+                if(ch && ch->name[0])
+                    o = copyb(out, o, sizeof out, ch->name, strlen(ch->name));
+                else
+                    o = copyb(out, o, sizeof out, s + 2, (size_t)(q - (s + 2)));
+                s = q + 1;
+                continue;
+            }
+        }
+        if(s[0] == '<' && (s[1] == ':' || (s[1] == 'a' && s[2] == ':'))){
+            const char *p = s + (s[1] == 'a' ? 3 : 2);
+            const char *e = strchr(p, ':');
+            if(e && e[1] >= '0' && e[1] <= '9'){
+                const char *q = e + 1;
+                while(*q >= '0' && *q <= '9') q++;
+                if(*q == '>'){
+                    o = copyb(out, o, sizeof out, ":", 1);
+                    o = copyb(out, o, sizeof out, p, (size_t)(e - p));
+                    o = copyb(out, o, sizeof out, ":", 1);
+                    s = q + 1;
+                    continue;
+                }
+            }
+        }
+        if(o >= sizeof out - 1) break;
+        out[o++] = *s++;
+    }
+    out[o] = 0;
+    memcpy(m->content, out, o + 1);
+}
+
 int msg_from_json(message *m, jl_val_t *o){
     jl_val_t *a, *atts, *e;
     int i;

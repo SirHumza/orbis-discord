@@ -137,6 +137,31 @@ TEST(test_msgjson_reply_deleted_reference){
     jl_free(v);
 }
 
+TEST(test_msgjson_resolve_mentions){
+    store *st = store_new();
+    guild g = {.id = 9};
+    channel c = {.id = 100, .guild = 9, .type = 0};
+    member mb = {.user = 7, .guild = 9};
+    message m;
+    strcpy(g.name, "G");
+    strcpy(c.name, "general");
+    strcpy(mb.name, "bob");
+    store_put_guild(st, &g);
+    store_put_channel(st, &c);
+    store_put_member(st, &mb);
+    memset(&m, 0, sizeof m);
+    m.chan = 100;
+    strcpy(m.content, "<@7> see <#100> <:tada:55> <a:party:66> <@&44> <@!5> plain");
+    msg_resolve_mentions(st, &m, 5);
+    ASSERT_EQ_STR(m.content, "@bob see #general :tada: :party: @role @5 plain");
+    ASSERT_EQ_INT(m.mentions_me, 1);
+    strcpy(m.content, "<@7> hi <@123>");
+    msg_resolve_mentions(st, &m, 5);
+    ASSERT_EQ_STR(m.content, "@bob hi @123");
+    ASSERT_EQ_INT(m.mentions_me, 0);
+    store_free(st);
+}
+
 TEST(test_msgjson_requires_id_and_channel){
     const char *json = "{\"id\":\"5\",\"content\":\"x\"}";
     jl_val_t *v = jl_parse(json, strlen(json));
@@ -154,5 +179,6 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_reactions();
     g_tests_run++; test_msgjson_reply_reference();
     g_tests_run++; test_msgjson_reply_deleted_reference();
+    g_tests_run++; test_msgjson_resolve_mentions();
     g_tests_run++; test_msgjson_requires_id_and_channel();
 }

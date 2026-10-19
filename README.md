@@ -27,6 +27,7 @@ rest of the feature set are the next milestones.
 | Reactions: chips, counts, me highlight, live gateway updates | Done | host tests, PS4 elf |
 | Typing indicators: TYPING_START, composer strip, /typing POST | Done | host tests, PS4 elf |
 | Reply previews: referenced-message rows, preserved on edit | Done | host tests, PS4 elf |
+| Mentions: token resolution + mentions-me highlight | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -43,7 +44,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (129 checks) + fixtures
+tests/        host test suite (131 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -92,7 +93,8 @@ Phase 2, messaging parity:
 - [x] Reply previews: referenced-message preview rows, preserved across edits
 - [ ] Reply send (REST), own-message edit/delete, pins, message search
 - [x] Typing indicators: TYPING_START receive, composer strip, /typing POST on composer open
-- [ ] Unread badges, mentions, notification sounds
+- [x] Mentions: @user/#channel/:emoji: token resolution, mentions-me row highlight
+- [ ] Unread badges, notification sounds
 - [ ] Avatars/guild icons from the CDN, member profiles, role colors
 - [ ] DMs and group DMs, friends list, presence control
 - [ ] Threads, forums, invites, channel categories, permissions

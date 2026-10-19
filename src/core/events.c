@@ -98,6 +98,7 @@ static int on_ready(gateway *g, jl_val_t *d){
 static int on_message_create(gateway *g, jl_val_t *d){
     message m;
     if(!msg_from_json(&m, d)) return GW_EV_NONE;
+    msg_resolve_mentions(gw_store(g), &m, gw_self_id(g));
     store_put_message(gw_store(g), &m);
     return GW_EV_MESSAGE;
 }
@@ -106,6 +107,7 @@ static int on_message_update(gateway *g, jl_val_t *d){
     message m;
     const message *old;
     if(!msg_from_json(&m, d)) return GW_EV_NONE;
+    msg_resolve_mentions(gw_store(g), &m, gw_self_id(g));
     old = store_messages(gw_store(g), m.chan);
     while(old && old->id != m.id) old = old->next;
     if(old){

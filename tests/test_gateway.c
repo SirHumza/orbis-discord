@@ -166,6 +166,19 @@ TEST(test_events_reply_preserved_on_edit){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_mentions){
+    setup();
+    feed("{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{\"session_id\":\"x\",\"user\":{\"id\":\"5\",\"username\":\"me\"},\"guilds\":[],\"private_channels\":[]}}");
+    feed("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"<@5> hi <:wave:9>\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->mentions_me, 1);
+    ASSERT_EQ_STR(store_messages(s, 100)->content, "@5 hi :wave:");
+    feed("{\"op\":0,\"s\":3,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"21\",\"channel_id\":\"100\",\"content\":\"<@5> again\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->next->mentions_me, 1);
+    feed("{\"op\":0,\"s\":4,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"22\",\"channel_id\":\"100\",\"content\":\"no ping here\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->next->next->mentions_me, 0);
+    gw_free(g); store_free(s);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -179,4 +192,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_reactions();
     g_tests_run++; test_events_typing();
     g_tests_run++; test_events_reply_preserved_on_edit();
+    g_tests_run++; test_events_mentions();
 }

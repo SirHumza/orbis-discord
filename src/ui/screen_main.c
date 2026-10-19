@@ -369,10 +369,11 @@ static void fetch_members(main_ctx *L, uint64_t guild_id){
     }
 }
 
-static void put_message_json(store *st, jl_val_t *o){
+static void put_message_json(main_ctx *L, jl_val_t *o){
     message m;
     if(!msg_from_json(&m, o)) return;
-    store_put_message(st, &m);
+    msg_resolve_mentions(L->app->st, &m, gw_self_id(L->app->gw));
+    store_put_message(L->app->st, &m);
 }
 
 static void messages_cb(int status, const char *body, void *ud){
@@ -390,7 +391,7 @@ static void messages_cb(int status, const char *body, void *ud){
     v = body ? jl_parse(body, strlen(body)) : NULL;
     if(v && v->type == JL_ARRAY){
         for(i = 0; i < v->count; i++)
-            put_message_json(L->app->st, jl_arr_at(v, i));
+            put_message_json(L, jl_arr_at(v, i));
         if(f->older && v->count < 50) L->has_older = 0;
         if(!f->older) L->has_older = v->count >= 50;
         log_msg("rest: %d messages for %llu%s", v->count,
@@ -440,7 +441,7 @@ static void send_cb(int status, const char *body, void *ud){
     if(status == 200 && body){
         jl_val_t *v = jl_parse(body, strlen(body));
         if(v && v->type == JL_OBJECT)
-            put_message_json(L->app->st, v);
+            put_message_json(L, v);
         jl_free(v);
         log_msg("rest: sent to %llu", (unsigned long long)f->chan);
     } else {
@@ -615,6 +616,10 @@ static void draw_messages(main_ctx *L){
         int lh = ln->att_h > 0 ? ln->att_h : MV_LINE_H;
         if(y + lh < CHAT_Y0) continue;
         if(y > CHAT_Y0 + CHAT_VIEW_H) break;
+        if(!ln->is_sep && ln->m->mentions_me){
+            ui_rect(CHAT_X, y, CHAT_W, lh, 0x2AFAA61Au);
+            ui_rect(CHAT_X, y, 2, lh, 0xFAA61Au);
+        }
         if(ln->is_sep){
             char d[48];
             int tw, half;

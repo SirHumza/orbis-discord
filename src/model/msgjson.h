@@ -4,5 +4,6 @@
 #include "../core/jsonlite.h"
 
 int msg_from_json(message *m, jl_val_t *o);
+void msg_resolve_mentions(store *st, message *m, uint64_t self_id);
 
 #endif
