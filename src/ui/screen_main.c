@@ -118,6 +118,15 @@ typedef struct {
     const message *pin_list[50];
     int pin_n;
     int pin_i;
+    int search;
+    int search_pending;
+    int search_gen;
+    char search_q[96];
+    uint64_t srch_ids[50];
+    int srch_ids_n;
+    const message *srch_list[50];
+    int srch_n;
+    int srch_i;
 } main_ctx;
 
 typedef struct {
@@ -479,6 +488,143 @@ static void pins_open(main_ctx *L, uint64_t chan){
         free(f);
         set_status(L, "Pins failed");
     }
+}
+
+static char lower_ascii(char c){
+    return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+}
+
+static int has_nocase(const char *hay, const char *needle){
+    size_t n = strlen(needle), i;
+    const char *p;
+    if(n == 0) return 0;
+    for(p = hay; *p; p++){
+        for(i = 0; i < n && p[i] && lower_ascii(p[i]) == lower_ascii(needle[i]); i++){}
+        if(i == n) return 1;
+    }
+    return 0;
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+    int gen;
+} search_fetch;
+
+static void search_recollect(main_ctx *L){
+    int i;
+    L->srch_n = 0;
+    for(i = 0; i < L->srch_ids_n; i++){
+        const message *m = store_message(L->app->st, L->chan_loaded,
+                                         L->srch_ids[i]);
+        if(m) L->srch_list[L->srch_n++] = m;
+    }
+}
+
+static void search_cb(int status, const char *body, void *ud){
+    search_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v, *msgs;
+    int i;
+    if(f->gen != L->search_gen){
+        free(f);
+        return;
+    }
+    L->search_pending = 0;
+    if(status != 200){
+        log_msg("rest: search failed (%d)", status);
+        set_status(L, "Search failed");
+        L->srch_ids_n = 0;
+        L->srch_n = 0;
+        free(f);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    msgs = v && v->type == JL_OBJECT ? jl_obj_get(v, "messages") : NULL;
+    L->srch_ids_n = 0;
+    if(msgs && msgs->type == JL_ARRAY){
+        for(i = 0; i < msgs->count && L->srch_ids_n < 50; i++){
+            jl_val_t *g = jl_arr_at(msgs, i);
+            message pick;
+            int have = 0, k;
+            memset(&pick, 0, sizeof pick);
+            if(g->type == JL_ARRAY){
+                for(k = 0; k < g->count; k++){
+                    message m;
+                    if(!msg_from_json(&m, jl_arr_at(g, k))) continue;
+                    if(!have && has_nocase(m.content, L->search_q)){
+                        pick = m;
+                        have = 1;
+                    }
+                }
+                if(!have && g->count > 0 &&
+                   msg_from_json(&pick, jl_arr_at(g, 0)))
+                    have = 1;
+            } else if(g->type == JL_OBJECT &&
+                      msg_from_json(&pick, g)){
+                have = 1;
+            }
+            if(!have || pick.chan != f->chan) continue;
+            for(k = 0; k < L->srch_ids_n; k++)
+                if(L->srch_ids[k] == pick.id) break;
+            if(k < L->srch_ids_n) continue;
+            L->srch_ids[L->srch_ids_n++] = pick.id;
+            msg_resolve_mentions(L->app->st, &pick, gw_self_id(L->app->gw));
+            store_put_message(L->app->st, &pick);
+        }
+    }
+    jl_free(v);
+    search_recollect(L);
+    L->srch_i = 0;
+    log_msg("rest: %d search hits for %llu", L->srch_n,
+            (unsigned long long)f->chan);
+    free(f);
+}
+
+static void search_start(main_ctx *L, uint64_t chan, const char *query){
+    char enc[384], path[512];
+    const channel *ch = store_channel(L->app->st, chan);
+    search_fetch *f;
+    if(!ch || !query || !*query) return;
+    if(rest_path_encode(query, enc, sizeof enc) < 0) return;
+    if(ch->guild)
+        snprintf(path, sizeof path,
+                 "/api/v9/guilds/%llu/messages/search?limit=25"
+                 "&channel_id=%llu&content=%s",
+                 (unsigned long long)ch->guild, (unsigned long long)chan, enc);
+    else
+        snprintf(path, sizeof path,
+                 "/api/v9/channels/%llu/messages/search?limit=25&content=%s",
+                 (unsigned long long)chan, enc);
+    snprintf(L->search_q, sizeof L->search_q, "%s", query);
+    L->search = 1;
+    L->search_pending = 1;
+    L->search_gen++;
+    L->srch_ids_n = 0;
+    L->srch_n = 0;
+    L->srch_i = 0;
+    f = calloc(1, sizeof *f);
+    if(!f){
+        L->search_pending = 0;
+        return;
+    }
+    f->ctx = L;
+    f->chan = chan;
+    f->gen = L->search_gen;
+    if(rest_send(L->app->rest, "GET", path, NULL, search_cb, f) != 0){
+        L->search_pending = 0;
+        free(f);
+        set_status(L, "Search failed");
+    }
+}
+
+static void search_prompt(main_ctx *L, uint64_t chan, int prefill){
+    char q[96];
+    memset(q, 0, sizeof q);
+    if(prefill) snprintf(q, sizeof q, "%s", L->search_q);
+    if(!ime_prompt("Search messages", "", q, sizeof q)) return;
+    if(!q[0]) return;
+    search_start(L, chan, q);
 }
 
 static void messages_cb(int status, const char *body, void *ud){
@@ -1079,6 +1225,42 @@ static void draw_viewer(main_ctx *L){
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
 }
 
+static void draw_search(main_ctx *L){
+    int w = 760, h = 560;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    char title[128];
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    trunc_utf8(title, sizeof title, L->search_q, 50);
+    snprintf(title + strlen(title), sizeof title - strlen(title),
+             " - search");
+    ui_text(x + 20, y + 16, title, UI_TEXT, 18);
+    if(L->search_pending){
+        ui_text(x + 20, y + 60, "Searching...", UI_TEXT_DIM, 16);
+    } else if(L->srch_n == 0){
+        ui_text(x + 20, y + 60, "No results", UI_TEXT_DIM, 16);
+    } else {
+        first = L->srch_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->srch_n - 9) first = L->srch_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->srch_n && i < first + 9; i++){
+            const message *m = L->srch_list[i];
+            char snip[128], who[96];
+            int ry = y + 56 + (i - first) * 52;
+            if(i == L->srch_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 46, 6, UI_BLURPLE);
+            snprintf(who, sizeof who, "@%s", m->author_name);
+            trunc_utf8(snip, sizeof snip, m->content, 70);
+            ui_text(x + 24, ry, who, UI_TEXT, 14);
+            if(snip[0]) ui_text(x + 24, ry + 20, snip, UI_TEXT_DIM, 14);
+        }
+    }
+    ui_text(x + 20, y + h - 30,
+            "UP/DOWN browse   CROSS jump   R2 new search   CIRCLE close",
+            UI_TEXT_DIM, 12);
+}
+
 static void draw_pins(main_ctx *L){
     int w = 760, h = 560;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
@@ -1495,6 +1677,26 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.search){
+                    if(e == IE_UP && L.srch_i > 0){
+                        L.srch_i--;
+                    } else if(e == IE_DOWN && L.srch_i + 1 < L.srch_n){
+                        L.srch_i++;
+                    } else if(e == IE_SELECT && L.srch_n > 0){
+                        const message *m = L.srch_list[L.srch_i];
+                        if(m && m->chan == L.chan_loaded){
+                            L.search = 0;
+                            L.sel = 1;
+                            L.sel_id = m->id;
+                            sel_into_view(&L);
+                        }
+                    } else if(e == IE_SEARCH){
+                        search_prompt(&L, L.chan_loaded, 1);
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.search = 0;
+                    }
+                    continue;
+                }
                 if(L.sel){
                     if(e == IE_UP || e == IE_DOWN){
                         const message *m = store_message_step(
@@ -1569,6 +1771,9 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_PINS){
                     if(L.focus == 2 && v.active)
                         pins_open(&L, v.active->id);
+                } else if(e == IE_SEARCH){
+                    if(L.focus == 2 && v.active)
+                        search_prompt(&L, v.active->id, 0);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1581,6 +1786,7 @@ int screen_main_run(app_state *st){
         if(L.menu) draw_menu(&L);
         if(L.react_pick) draw_react_pick(&L);
         if(L.pins) draw_pins(&L);
+        if(L.search) draw_search(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);
