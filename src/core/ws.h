@@ -47,6 +47,9 @@ typedef struct {
 int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
                const char *origin);
 int orbis_net_dial(const char *host, int port);
+/* Writes a fresh base64 Sec-WebSocket-Key (needs 25 bytes) and returns its
+ * length, or 0. Shared by the gateway and remote-auth sessions. */
+int ws_client_key(char *out, size_t cap);
 int ws_build_handshake(char *out, size_t cap, const char *host, const char *resource,
                        const char *key, const char *origin);
 int ws_send_text(ws_t *w, const char *msg, size_t len);

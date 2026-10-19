@@ -16,4 +16,5 @@ typedef struct app_state {
 } app_state;
 
 int screen_login_run(app_state *st);
+int screen_main_run(app_state *st);
 #endif

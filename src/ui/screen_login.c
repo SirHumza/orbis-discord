@@ -12,7 +12,6 @@
 #include "theme.h"
 #include "../core/remoteauth.h"
 #include "../core/ws.h"
-#include "../core/b64.h"
 #include "../core/clock.h"
 #include "../core/jsonlite.h"
 #include "../core/log.h"
@@ -52,25 +51,6 @@ typedef struct {
 
 static uint64_t now_ms(void){
     return (uint64_t)orbis_mono_s() * 1000u;
-}
-
-static void ws_key(char *out){
-    unsigned char rnd[16];
-    uint64_t t = (uint64_t)orbis_mono_s();
-    int fd = open("/dev/urandom", O_RDONLY);
-    if(fd >= 0){
-        ssize_t n = read(fd, rnd, sizeof rnd);
-        close(fd);
-        if(n == (ssize_t)sizeof rnd){
-            b64_encode(rnd, sizeof rnd, out);
-            return;
-        }
-    }
-    for(size_t i = 0; i < sizeof rnd; i++){
-        t = t * 6364136223846793005ull + 1442695040888963407ull;
-        rnd[i] = (unsigned char)(t >> 33);
-    }
-    b64_encode(rnd, sizeof rnd, out);
 }
 
 static void center_text(const char *s, int y, uint32_t argb, int px){
@@ -226,8 +206,8 @@ int screen_login_run(app_state *st){
 
         if(!ws_up && (retry_at == 0 || t >= retry_at)){
             char key[32];
-            ws_key(key);
-            if(ws_connect(&ws, RA_HOST, 443, RA_RESOURCE, key, RA_ORIGIN) == 0){
+            if(ws_client_key(key, sizeof key) > 0 &&
+               ws_connect(&ws, RA_HOST, 443, RA_RESOURCE, key, RA_ORIGIN) == 0){
                 char pk[1024], init[1200];
                 int n;
                 ws_up = 1;

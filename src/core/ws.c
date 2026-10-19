@@ -5,6 +5,7 @@
  * All client->server frames are masked per RFC 6455 5.3, control frames too.
  */
 #include "ws.h"
+#include "b64.h"
 #include "clock.h"
 #include "tls.h"
 #include "log.h"
@@ -89,6 +90,32 @@ static void next_mask(unsigned char mk[4]){
     mk_seed = mk_seed*1664525u + 1013904223u;
     mk[0]=(unsigned char)(mk_seed&0xff);       mk[1]=(unsigned char)((mk_seed>>8)&0xff);
     mk[2]=(unsigned char)((mk_seed>>16)&0xff); mk[3]=(unsigned char)((mk_seed>>24)&0xff);
+}
+
+int ws_client_key(char *out, size_t cap){
+    unsigned char rnd[16];
+    size_t got = 0;
+    int fd;
+    /* 16 random bytes -> 24 base64 chars + NUL. */
+    if(!out || cap < 25) return 0;
+    fd = open("/dev/urandom", O_RDONLY);
+    if(fd >= 0){
+        while(got < sizeof rnd){
+            long r = read(fd, (char *)rnd + got, sizeof rnd - got);
+            if(r <= 0) break;
+            got += (size_t)r;
+        }
+        close(fd);
+    }
+    if(got != sizeof rnd){
+        uint64_t t = (uint64_t)orbis_mono_s() ^ (uint64_t)(uintptr_t)out;
+        for(size_t i = 0; i < sizeof rnd; i++){
+            t = t * 6364136223846793005ull + 1442695040888963407ull;
+            rnd[i] = (unsigned char)(t >> 33);
+        }
+    }
+    b64_encode(rnd, sizeof rnd, out);
+    return (int)strlen(out);
 }
 
 int orbis_net_dial(const char *host, int port){

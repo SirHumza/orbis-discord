@@ -8,12 +8,10 @@
 #include "http_tls.h"
 #include "ui/renderer.h"
 #include "ui/screens.h"
-#include "ui/theme.h"
 #include "platform/ime.h"
 #include "platform/token.h"
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 int main(void){
     store *st;
@@ -52,16 +50,6 @@ int main(void){
     app.gw = gw;
     log_msg("core ready (hb interval %d ms)", gw_interval_ms(gw));
 
-    for(;;){
-        ui_frame_begin();
-        ui_rect(0, 0, 1920, 1080, UI_CHAT_BG);
-        ui_text(96, 160, "orbis-discord", UI_BLURPLE, 40);
-        if(app.self_name[0])
-            ui_text(96, 240, app.self_name, UI_TEXT, 24);
-        ui_text(96, 300, "Logged in. Channel UI lands with Task 9.", UI_TEXT_DIM, 18);
-        ui_frame_end();
-        ui_pump();
-        sleep(1);
-    }
+    screen_main_run(&app);
     return 0;
 }

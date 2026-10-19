@@ -11,15 +11,16 @@ Gates: host `make -C tests test` · PS4 `./scripts/build.sh elf` · console FTP 
 - [x] T4 REST client + ratelimit queue (429 retry_after honored)
 - [x] T5 QR remote auth (RSA-OAEP, nonce proof, fingerprint, 4003 cancel)
 - [x] T6 gateway pump + backoff/heartbeat + PS4 elf build check
-- [~] T7 SDL2 renderer + font + theme (code done 72/72 green + elf builds; commit/ledger pending)
-- [~] T7b image pipeline PNG/JPEG/GIF + LRU cache + save, gifdec memory-input patch (code done; commit/ledger pending)
-- [ ] ws.c: optional `Origin: https://discord.com` header for remote-auth gateway
-- [ ] ra_render_qr: qrcodegen → RGBA bitmap, quiet zone 4, host test
-- [ ] T8 login screen with live QR + manual token fallback + persist `/data/orbis-discord/token` (0600)
-- [ ] T9 main layout skeleton + pad navigation (`src/platform/input.c`, `nav.c`, `test_nav`)
+- [x] T7 SDL2 renderer + font + theme (commit 404e204)
+- [x] T7b image pipeline PNG/JPEG/GIF + LRU cache + save, gifdec memory-input patch (commit 06cc616)
+- [x] ws.c: optional `Origin: https://discord.com` header for remote-auth gateway
+- [x] ra_qr_modules: qrcodegen → 1-bit module matrix (renderer draws rects), host test
+- [x] T8 login screen with live QR + manual token fallback + persist `/data/orbis-discord/token` (0600) (commit eea0277)
+- [x] T9 main layout skeleton + pad navigation + live gateway session (`platform/input.c`, `nav.c`, `screen_main.c`, `test_nav`)
 - [ ] T10 message view: history fetch `GET /channels/{id}/messages?limit=50`, wrapping, grouping, day separators, live append, scroll paging (`rest_get_messages`, `msgview.c`, `test_msgview`)
 - [ ] T11 composer + IME dialog (sceCommonDialog) + send `POST /channels/{id}/messages`, optimistic append + ack correction (`platform/ime.c`, `test_ime_utf8`)
 - [ ] T12 member list + presence dots + offline banner + DM list (`GET /users/@me/channels`) + PKG packaging (`make pkg`)
+- [ ] Full parity feature backlog (see README roadmap)
 - [ ] Final whole-branch review (fresh reviewer) + one fix pass
 - [ ] Deploy to console + on-device smoke checklist (login → guild → channel → history → send → emoji → reconnect)
 

@@ -102,6 +102,9 @@ TEST(test_store_channels_for_guild){
     ASSERT_EQ_INT(out[1], 100);
     n = store_channels_for_guild(st, 9, out, 1);
     ASSERT_EQ_INT(n, 1);
+    ASSERT_TRUE(store_channel(st, 101) != NULL);
+    ASSERT_EQ_STR(store_channel(st, 101)->name, "one");
+    ASSERT_TRUE(store_channel(st, 999) == NULL);
     store_free(st);
 }
 

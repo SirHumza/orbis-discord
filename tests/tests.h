@@ -21,5 +21,6 @@ void run_remoteauth_tests(void);
 void run_gateway_loop_tests(void);
 void run_ui_tests(void);
 void run_image_tests(void);
+void run_nav_tests(void);
 
 #endif

@@ -121,6 +121,14 @@ void store_put_channel(store *st, const channel *in){
     st->channels[st->nchannels++] = *in;
 }
 
+const channel *store_channel(store *st, uint64_t id){
+    size_t i;
+    if(!st) return NULL;
+    for(i = 0; i < st->nchannels; i++)
+        if(st->channels[i].id == id) return &st->channels[i];
+    return NULL;
+}
+
 void store_put_guild(store *st, const guild *in){
     size_t i;
     if(!st || !in) return;

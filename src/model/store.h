@@ -40,6 +40,7 @@ void store_put_message(store *, const message *);
 void store_del_message(store *, uint64_t chan, uint64_t id);
 const message *store_messages(store *, uint64_t chan);
 void store_put_channel(store *, const channel *);
+const channel *store_channel(store *, uint64_t id);
 void store_put_guild(store *, const guild *);
 void store_put_member(store *, const member *);
 size_t store_channels_for_guild(store *, uint64_t guild_id, uint64_t *out, size_t cap);
