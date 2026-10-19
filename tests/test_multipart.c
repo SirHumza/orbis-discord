@@ -36,7 +36,18 @@ TEST(test_multipart_payload){
     free(out);
 }
 
+TEST(test_multipart_filename_control_chars){
+    char *out = NULL;
+    size_t len = 0;
+    ASSERT_EQ_INT(multipart_build("B", NULL, "evil\r\nX: y.txt", "text/plain",
+                                  "x", 1, &out, &len), 0);
+    ASSERT_TRUE(strstr(out, "\r\nX: y.txt") == NULL);
+    ASSERT_TRUE(strstr(out, "filename=\"evil__X: y.txt\"") != NULL);
+    free(out);
+}
+
 void run_multipart_tests(void){
+    g_tests_run++; test_multipart_filename_control_chars();
     g_tests_run++; test_multipart_file();
     g_tests_run++; test_multipart_payload();
 }

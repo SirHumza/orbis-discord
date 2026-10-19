@@ -7,8 +7,13 @@ static size_t esc_name(const char *in, char *out, size_t cap){
     size_t n = 0;
     if(!in) in = "file";
     for(; *in && n + 3 < cap; in++){
-        if(*in == '"' || *in == '\\') out[n++] = '\\';
-        out[n++] = *in;
+        unsigned char c = (unsigned char)*in;
+        if(c < 0x20 || c == 0x7f){
+            out[n++] = '_';
+            continue;
+        }
+        if(c == '"' || c == '\\') out[n++] = '\\';
+        out[n++] = (char)c;
     }
     out[n] = 0;
     return n;

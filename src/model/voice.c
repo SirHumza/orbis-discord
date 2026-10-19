@@ -148,10 +148,12 @@ int voice_discovery_packet(uint32_t ssrc, unsigned char *out, size_t cap){
 
 int voice_discovery_parse(const unsigned char *buf, size_t len, char *ip,
                           size_t ip_cap, int *port){
-    int i;
+    size_t i, max;
     if(!buf || len < 74 || !ip || !ip_cap || !port) return 0;
     if(buf[0] != 0 || buf[1] != 2) return 0;
-    for(i = 0; i < 63 && buf[8 + (size_t)i]; i++) ip[i] = (char)buf[8 + i];
+    max = ip_cap - 1;
+    if(max > 63) max = 63;
+    for(i = 0; i < max && buf[8 + i]; i++) ip[i] = (char)buf[8 + i];
     ip[i] = 0;
     *port = (buf[72] << 8) | buf[73];
     return ip[0] && *port;

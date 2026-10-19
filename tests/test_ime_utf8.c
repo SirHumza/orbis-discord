@@ -48,8 +48,8 @@ TEST(test_utf16_lone_surrogates){
 
 TEST(test_utf16_truncation){
     uint16_t in[] = { 0x00E9, 'B', 0 };
-    char out[2];
-    size_t n = ime_utf16_to_utf8(in, 2, out, sizeof out);
+    char out[3];
+    size_t n = ime_utf16_to_utf8(in, 2, out, 2);
     ASSERT_EQ_INT(n, 0);
     ASSERT_EQ_STR(out, "");
     n = ime_utf16_to_utf8(in, 1, out, 3);

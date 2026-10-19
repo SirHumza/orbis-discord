@@ -86,6 +86,20 @@ TEST(test_voice_discovery){
                                         &port), 0);
 }
 
+TEST(test_voice_discovery_respects_ip_cap){
+    unsigned char resp[74];
+    char ip[4];
+    int port = 0;
+    memset(resp, 0, sizeof resp);
+    resp[0] = 0; resp[1] = 2;
+    memcpy(resp + 8, "9.8.7.6", 7);
+    resp[72] = 0; resp[73] = 80;
+    ASSERT_EQ_INT(voice_discovery_parse(resp, sizeof resp, ip, sizeof ip,
+                                        &port), 1);
+    ASSERT_EQ_STR(ip, "9.8");
+    ASSERT_EQ_INT(port, 80);
+}
+
 TEST(test_voice_endpoint){
     char host[64];
     int port = 0;
@@ -109,5 +123,6 @@ void run_voice_tests(void){
     g_tests_run++; test_voice_mode_pick();
     g_tests_run++; test_voice_session();
     g_tests_run++; test_voice_discovery();
+    g_tests_run++; test_voice_discovery_respects_ip_cap();
     g_tests_run++; test_voice_endpoint();
 }
