@@ -47,6 +47,7 @@ const channel *store_channel(store *, uint64_t id);
 void store_put_guild(store *, const guild *);
 void store_put_member(store *, const member *);
 size_t store_channels_for_guild(store *, uint64_t guild_id, uint64_t *out, size_t cap);
+size_t store_dm_channels(store *, const channel **out, size_t cap);
 size_t store_guilds(store *, const guild **out, size_t cap);
 size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);

@@ -38,6 +38,31 @@ TEST(test_store_messages_sorted_and_deduped){
     store_free(st);
 }
 
+TEST(test_store_dm_channels){
+    store *st = store_new();
+    channel dm2 = {.id = 20, .guild = 0, .type = 1, .position = 1};
+    channel dm1 = {.id = 10, .guild = 0, .type = 1, .position = 0};
+    channel grp = {.id = 30, .guild = 0, .type = 3, .position = 2};
+    channel txt = {.id = 40, .guild = 7, .type = 0, .position = 0};
+    channel voice = {.id = 50, .guild = 0, .type = 2, .position = 3};
+    const channel *out[8];
+    size_t n;
+    strcpy(dm1.name, "alice");
+    strcpy(dm2.name, "bob");
+    strcpy(grp.name, "friends");
+    store_put_channel(st, &dm2);
+    store_put_channel(st, &dm1);
+    store_put_channel(st, &grp);
+    store_put_channel(st, &txt);
+    store_put_channel(st, &voice);
+    n = store_dm_channels(st, out, 8);
+    ASSERT_EQ_INT(n, 3);
+    ASSERT_EQ_INT(out[0]->id, 10);
+    ASSERT_EQ_INT(out[1]->id, 20);
+    ASSERT_EQ_INT(out[2]->id, 30);
+    store_free(st);
+}
+
 TEST(test_store_del_pending_by_nonce){
     store *st = store_new();
     message real = {.id = 10, .chan = 1, .author_id = 7};
@@ -131,6 +156,7 @@ void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
     g_tests_run++; test_store_messages_sorted_and_deduped();
+    g_tests_run++; test_store_dm_channels();
     g_tests_run++; test_store_del_pending_by_nonce();
     g_tests_run++; test_store_delete_missing_is_noop();
     g_tests_run++; test_store_delete_existing();

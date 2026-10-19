@@ -171,9 +171,7 @@ tls_ctx_t *tls_start(int fd, const char *host){
     log_msg("tls: handshake start");
     {
         int64_t dl = orbis_mono_s() + 15;
-        extern int daemon_stop_requested(void) __attribute__((weak));
         for(;;){
-            if(daemon_stop_requested && daemon_stop_requested()){ log_msg("tls: aborted (stop)"); goto fail; }
             rc = mbedtls_ssl_handshake(&t->ssl);
             if(rc == 0) break;
             if(rc != MBEDTLS_ERR_SSL_WANT_READ &&

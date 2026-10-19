@@ -23,7 +23,7 @@ rest of the feature set are the next milestones.
 | PNG/JPEG/GIF decode, LRU cache, save to `/data/orbis-discord/downloads` | Done | host tests |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
-| Member list, DMs | Not started | — |
+| Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
 | Voice chat, mic capture, screenshare | Not started (design pending) | — |
 
 Nothing has been smoke-tested on retail hardware yet; "PS4 elf" means it
@@ -37,7 +37,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (105 checks) + fixtures
+tests/        host test suite (107 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -59,6 +59,7 @@ PS4 ELF (needs OpenOrbis at `$OO_PS4_TOOLCHAIN` or `/Users/mac/PS4Toolchain/Open
 ```sh
 ./scripts/build.sh elf     # build/orbis-discord.elf
 ./scripts/build.sh fself   # fake-signed self for a jailbroken console
+make pkg                   # build/orbis-discord.pkg (installable package)
 ```
 
 Runtime paths on the console:
@@ -74,7 +75,7 @@ Phase 1 (in progress):
 - [x] Login screen, main layout, pad navigation, live gateway session
 - [x] Message view: history fetch, UTF-8 wrapping, grouping, day separators, scroll paging, live append
 - [x] Composer + IME + send, optimistic append, ack correction
-- [ ] Member list + presence dots, offline banner, DM list, PKG packaging
+- [x] Member list + presence dots, offline banner, DM list, PKG packaging
 - [ ] Whole-branch review, deploy, on-device smoke (login → channel → history → send → emoji → reconnect)
 
 Phase 2, messaging parity:

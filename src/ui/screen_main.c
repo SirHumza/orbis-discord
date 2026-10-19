@@ -55,6 +55,7 @@ typedef struct {
     const guild *guilds[64];
     int ng;
     int gi;
+    int dm;
     const channel *text[64];
     int nt;
     int ci;
@@ -72,6 +73,10 @@ typedef struct {
     uint64_t guilds_retry_at;
     uint64_t chan_guild;
     int chan_pending;
+    uint64_t member_guild;
+    int member_pending;
+    int dms_loaded;
+    int dms_pending;
     nav gn, cn;
     int focus;
     char status[64];
@@ -231,6 +236,101 @@ static void fetch_channels(main_ctx *L, uint64_t guild_id){
     if(rest_send(L->app->rest, "GET", path, NULL, channels_cb, f) != 0){
         L->chan_pending = 0;
         L->chan_guild = 0;
+        free(f);
+    }
+}
+
+static void dms_cb(int status, const char *body, void *ud){
+    main_ctx *L = ud;
+    jl_val_t *v;
+    int i;
+    L->dms_pending = 0;
+    if(status != 200){
+        log_msg("rest: dms failed (%d)", status);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count; i++){
+            jl_val_t *o = jl_arr_at(v, i);
+            jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
+            jl_val_t *type = o ? jl_obj_get(o, "type") : NULL;
+            jl_val_t *name = o ? jl_obj_get(o, "name") : NULL;
+            jl_val_t *rec = o ? jl_obj_get(o, "recipients") : NULL;
+            channel ch;
+            if(!id || id->type != JL_STRING) continue;
+            memset(&ch, 0, sizeof ch);
+            ch.id = sn_parse(id->str);
+            if(type && type->type == JL_NUMBER) ch.type = (int)type->num;
+            ch.position = i;
+            if(name && name->type == JL_STRING && name->str[0])
+                snprintf(ch.name, sizeof ch.name, "%s", name->str);
+            else if(rec && rec->type == JL_ARRAY){
+                jl_val_t *r0 = jl_arr_at(rec, 0);
+                jl_val_t *un = r0 ? jl_obj_get(r0, "username") : NULL;
+                if(un && un->type == JL_STRING)
+                    snprintf(ch.name, sizeof ch.name, "%s", un->str);
+            }
+            store_put_channel(L->app->st, &ch);
+        }
+        log_msg("rest: %d dm channels", v->count);
+        L->dms_loaded = 1;
+    }
+    jl_free(v);
+}
+
+static void fetch_dms(main_ctx *L){
+    L->dms_pending = 1;
+    if(rest_get_dm_channels(L->app->rest, dms_cb, L) != 0)
+        L->dms_pending = 0;
+}
+
+static void members_cb(int status, const char *body, void *ud){
+    chan_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v;
+    int i;
+    L->member_pending = 0;
+    if(status != 200){
+        log_msg("rest: members failed (%d)", status);
+        free(f);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count; i++){
+            jl_val_t *o = jl_arr_at(v, i);
+            jl_val_t *u = o ? jl_obj_get(o, "user") : NULL;
+            jl_val_t *uid = u ? jl_obj_get(u, "id") : NULL;
+            jl_val_t *uname = u ? jl_obj_get(u, "username") : NULL;
+            jl_val_t *nick = o ? jl_obj_get(o, "nick") : NULL;
+            member mem;
+            if(!uid || uid->type != JL_STRING) continue;
+            memset(&mem, 0, sizeof mem);
+            mem.user = sn_parse(uid->str);
+            mem.guild = f->guild;
+            if(nick && nick->type == JL_STRING && nick->str[0])
+                snprintf(mem.name, sizeof mem.name, "%s", nick->str);
+            else if(uname && uname->type == JL_STRING)
+                snprintf(mem.name, sizeof mem.name, "%s", uname->str);
+            store_put_member(L->app->st, &mem);
+        }
+        log_msg("rest: %d members for %llu", v->count,
+                (unsigned long long)f->guild);
+    }
+    jl_free(v);
+    free(f);
+}
+
+static void fetch_members(main_ctx *L, uint64_t guild_id){
+    chan_fetch *f = calloc(1, sizeof *f);
+    if(!f){ L->member_guild = 0; return; }
+    f->ctx = L;
+    f->guild = guild_id;
+    L->member_pending = 1;
+    if(rest_get_guild_members(L->app->rest, guild_id, members_cb, f) != 0){
+        L->member_pending = 0;
+        L->member_guild = 0;
         free(f);
     }
 }
@@ -438,20 +538,61 @@ static void gw_drop(main_ctx *L, uint64_t now, const char *why){
 static void view_build(main_ctx *L, frame_view *v){
     uint64_t cids[64];
     size_t nc = 0, i;
+    int sel;
     v->ng = (int)store_guilds(L->app->st, v->guilds, 64);
-    nav_step(&L->gn, IE_NONE, v->ng);
-    v->gi = nav_index(&L->gn);
+    nav_step(&L->gn, IE_NONE, v->ng + 1);
+    sel = nav_index(&L->gn);
+    v->dm = sel == 0;
+    v->gi = sel - 1;
     v->nt = 0;
     v->active = NULL;
-    if(v->ng > 0)
+    if(v->dm){
+        const channel *dms[64];
+        nc = store_dm_channels(L->app->st, dms, 64);
+        for(i = 0; i < nc && v->nt < 64; i++)
+            v->text[v->nt++] = dms[i];
+    } else if(v->ng > 0){
         nc = store_channels_for_guild(L->app->st, v->guilds[v->gi]->id, cids, 64);
-    for(i = 0; i < nc && v->nt < 64; i++){
-        const channel *c = store_channel(L->app->st, cids[i]);
-        if(c && c->type == 0) v->text[v->nt++] = c;
+        for(i = 0; i < nc && v->nt < 64; i++){
+            const channel *c = store_channel(L->app->st, cids[i]);
+            if(c && c->type == 0) v->text[v->nt++] = c;
+        }
     }
     nav_step(&L->cn, IE_NONE, v->nt);
     v->ci = nav_index(&L->cn);
     if(v->nt > 0) v->active = v->text[v->ci];
+}
+
+static void draw_members(main_ctx *L, const frame_view *v){
+    const member *ms[256];
+    size_t n, i;
+    int y = 52, on = 0;
+    char buf[96], nb[64];
+    if(v->dm || v->gi < 0 || v->ng <= 0) return;
+    n = store_members(L->app->st, v->guilds[v->gi]->id, ms, 256);
+    for(i = 0; i < n; i++)
+        if(ms[i]->online) on++;
+    snprintf(buf, sizeof buf, "ONLINE - %d", on);
+    ui_text(MEMBER_X + 16, y, buf, UI_TEXT_DIM, 12);
+    y += 22;
+    for(i = 0; i < n && y < SCR_H - 40; i++){
+        if(!ms[i]->online) continue;
+        ui_rect(MEMBER_X + 16, y + 6, 8, 8, UI_ONLINE);
+        trunc_utf8(nb, sizeof nb, ms[i]->name, 22);
+        ui_text(MEMBER_X + 32, y, nb, UI_TEXT, 16);
+        y += 28;
+    }
+    snprintf(buf, sizeof buf, "OFFLINE - %d", (int)n - on);
+    y += 8;
+    ui_text(MEMBER_X + 16, y, buf, UI_TEXT_DIM, 12);
+    y += 22;
+    for(i = 0; i < n && y < SCR_H - 40; i++){
+        if(ms[i]->online) continue;
+        ui_rect(MEMBER_X + 16, y + 6, 8, 8, UI_OFFLINE);
+        trunc_utf8(nb, sizeof nb, ms[i]->name, 22);
+        ui_text(MEMBER_X + 32, y, nb, UI_TEXT_DIM, 16);
+        y += 28;
+    }
 }
 
 static void draw_messages(main_ctx *L){
@@ -511,21 +652,31 @@ static void draw_main(main_ctx *L, const frame_view *v){
     ui_rect(0, 0, SCR_W, SCR_H, UI_CHAT_BG);
 
     ui_rect(0, 0, RAIL_W, SCR_H, UI_RAIL);
-    first = v->gi - GUILD_VIS / 2;
-    if(first < 0) first = 0;
-    if(first > v->ng - GUILD_VIS) first = v->ng - GUILD_VIS;
-    if(first < 0) first = 0;
-    for(i = first; i < v->ng && i < first + GUILD_VIS; i++){
-        int sel = i == v->gi;
-        y = 16 + (i - first) * GUILD_PITCH;
-        ui_rrect(12, y, 48, 48, sel ? 10 : 24, sel ? UI_BLURPLE : UI_CHANNEL_BG);
-        if(sel) ui_rect(0, y + 12, 4, 24, UI_TEXT);
-        first_codepoint(v->guilds[i]->name, buf, sizeof buf);
-        ui_text(36 - ui_text_width(buf, 20) / 2, y + 13, buf, 0xFFFFFFFFu, 20);
+    {
+        int total = v->ng + 1;
+        int cur = v->dm ? 0 : v->gi + 1;
+        first = cur - GUILD_VIS / 2;
+        if(first < 0) first = 0;
+        if(first > total - GUILD_VIS) first = total - GUILD_VIS;
+        if(first < 0) first = 0;
+        for(i = first; i < total && i < first + GUILD_VIS; i++){
+            int sel = i == cur;
+            y = 16 + (i - first) * GUILD_PITCH;
+            ui_rrect(12, y, 48, 48, sel ? 10 : 24, sel ? UI_BLURPLE : UI_CHANNEL_BG);
+            if(sel) ui_rect(0, y + 12, 4, 24, UI_TEXT);
+            if(i == 0){
+                ui_text(36 - ui_text_width("DM", 18) / 2, y + 14, "DM", 0xFFFFFFFFu, 18);
+            } else {
+                first_codepoint(v->guilds[i - 1]->name, buf, sizeof buf);
+                ui_text(36 - ui_text_width(buf, 20) / 2, y + 13, buf, 0xFFFFFFFFu, 20);
+            }
+        }
     }
 
     ui_rect(RAIL_W, 0, CHAN_W, SCR_H, UI_CHANNEL_BG);
-    if(v->ng > 0){
+    if(v->dm){
+        ui_text(RAIL_W + 16, 20, "Direct Messages", UI_TEXT, 18);
+    } else if(v->ng > 0){
         trunc_utf8(buf, sizeof buf, v->guilds[v->gi]->name, 22);
         ui_text(RAIL_W + 16, 20, buf, UI_TEXT, 18);
     }
@@ -539,7 +690,7 @@ static void draw_main(main_ctx *L, const frame_view *v){
         int sel = i == v->ci;
         y = CHAN_TOP + (i - first) * CHAN_ROW_H;
         if(sel) ui_rrect(RAIL_W + 8, y, CHAN_W - 16, CHAN_ROW_H - 4, 4, UI_SEP);
-        snprintf(buf, sizeof buf, "# %s", v->text[i]->name);
+        snprintf(buf, sizeof buf, "%s %s", v->dm ? "@" : "#", v->text[i]->name);
         trunc_utf8(buf, sizeof buf, buf, 26);
         ui_text(RAIL_W + 20, y + 7, buf, sel ? UI_TEXT : UI_TEXT_DIM, 16);
     }
@@ -548,7 +699,7 @@ static void draw_main(main_ctx *L, const frame_view *v){
     ui_rect(CHAT_X, 0, CHAT_W, HEADER_H, UI_HEADER_BG);
     ui_rect(CHAT_X, HEADER_H, CHAT_W, 1, UI_SEP);
     if(v->active){
-        snprintf(buf, sizeof buf, "# %s", v->active->name);
+        snprintf(buf, sizeof buf, "%s %s", v->dm ? "@" : "#", v->active->name);
         trunc_utf8(buf, sizeof buf, buf, 48);
         ui_text(CHAT_X + 16, 14, buf, UI_TEXT, 18);
     }
@@ -574,7 +725,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
         if(L->focus == 2)
             ui_rect(CHAT_X + MSG_PAD, cy + 8, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
         if(v->active)
-            snprintf(buf, sizeof buf, "Message #%s", v->active->name);
+            snprintf(buf, sizeof buf, "Message %s%s", v->dm ? "@" : "#",
+                     v->active->name);
         else
             snprintf(buf, sizeof buf, "Message");
         trunc_utf8(buf, sizeof buf, buf, 60);
@@ -583,7 +735,20 @@ static void draw_main(main_ctx *L, const frame_view *v){
 
     ui_rect(MEMBER_X, 0, MEMBER_W, SCR_H, UI_CHANNEL_BG);
     ui_rect(MEMBER_X, 0, 1, SCR_H, UI_SEP);
-    ui_text(MEMBER_X + 16, 20, "Members", UI_TEXT_DIM, 14);
+    if(v->dm)
+        ui_text(MEMBER_X + 16, 20, "Direct Messages", UI_TEXT_DIM, 14);
+    else {
+        ui_text(MEMBER_X + 16, 20, "Members", UI_TEXT_DIM, 14);
+        draw_members(L, v);
+    }
+
+    if(!L->up || !L->identified){
+        const char *warn = "Connection lost. Reconnecting...";
+        int wy = SCR_H - COMPOSER_H - 26;
+        ui_rect(CHAT_X, wy, CHAT_W, 26, UI_DANGER);
+        ui_text(CHAT_X + (CHAT_W - ui_text_width(warn, 13)) / 2, wy + 6,
+                warn, 0xFFFFFFFFu, 13);
+    }
 
     {
         uint32_t dot = !L->up ? UI_OFFLINE : L->identified ? UI_ONLINE : UI_IDLE;
@@ -623,6 +788,8 @@ int screen_main_run(app_state *st){
                 L.guilds_pending = 0;
                 L.chan_guild = 0;
                 L.chan_pending = 0;
+                L.member_guild = 0;
+                L.dms_loaded = 0;
                 gw_on_reconnected(g);
                 set_status(&L, "Identifying...");
                 log_msg("gw: connected");
@@ -713,10 +880,17 @@ int screen_main_run(app_state *st){
         if(L.up && L.identified && !L.guilds_loaded && !L.guilds_pending &&
            now >= L.guilds_retry_at)
             fetch_guilds(&L);
-        if(L.up && L.identified && v.ng > 0 && !L.chan_pending &&
-           L.chan_guild != v.guilds[v.gi]->id){
+        if(L.up && L.identified && !v.dm && v.gi >= 0 && v.ng > 0 &&
+           !L.chan_pending && L.chan_guild != v.guilds[v.gi]->id){
             L.chan_guild = v.guilds[v.gi]->id;
             fetch_channels(&L, L.chan_guild);
+        }
+        if(L.up && L.identified && L.guilds_loaded && !L.dms_loaded && !L.dms_pending)
+            fetch_dms(&L);
+        if(L.up && L.identified && !v.dm && v.gi >= 0 && v.ng > 0 &&
+           !L.member_pending && L.member_guild != v.guilds[v.gi]->id){
+            L.member_guild = v.guilds[v.gi]->id;
+            fetch_members(&L, L.member_guild);
         }
 
         rest_pump(st->rest, now);
@@ -740,7 +914,7 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_UP || e == IE_DOWN){
                     if(L.focus < 2)
                         nav_step(L.focus == 0 ? &L.gn : &L.cn, e,
-                                 L.focus == 0 ? v.ng : v.nt);
+                                 L.focus == 0 ? v.ng + 1 : v.nt);
                     else {
                         L.stick = 0;
                         L.top_px += (e == IE_UP ? -3 : 3) * MV_LINE_H;

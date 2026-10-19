@@ -196,6 +196,29 @@ size_t store_channels_for_guild(store *st, uint64_t guild_id, uint64_t *out, siz
     return n;
 }
 
+static int chan_ptr_cmp(const void *a, const void *b){
+    const channel *x = *(const channel *const *)a, *y = *(const channel *const *)b;
+    if(x->position != y->position) return x->position - y->position;
+    return x->id < y->id ? -1 : (x->id > y->id);
+}
+
+size_t store_dm_channels(store *st, const channel **out, size_t cap){
+    const channel **tmp;
+    size_t i, n = 0;
+    if(!st || !out || !cap) return 0;
+    tmp = malloc(st->nchannels * sizeof *tmp);
+    if(!tmp && st->nchannels) return 0;
+    for(i = 0; i < st->nchannels; i++)
+        if(st->channels[i].guild == 0 &&
+           (st->channels[i].type == 1 || st->channels[i].type == 3))
+            tmp[n++] = &st->channels[i];
+    qsort(tmp, n, sizeof *tmp, chan_ptr_cmp);
+    if(n > cap) n = cap;
+    for(i = 0; i < n; i++) out[i] = tmp[i];
+    free(tmp);
+    return n;
+}
+
 size_t store_guilds(store *st, const guild **out, size_t cap){
     size_t n;
     if(!st || !out) return 0;

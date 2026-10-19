@@ -68,6 +68,17 @@ int rest_get_messages(rest *r, uint64_t chan, uint64_t before, rest_cb cb, void 
     return rest_send(r, "GET", path, NULL, cb, ud);
 }
 
+int rest_get_guild_members(rest *r, uint64_t guild, rest_cb cb, void *ud){
+    char path[160];
+    snprintf(path, sizeof path, "/api/v9/guilds/%llu/members?limit=100",
+             (unsigned long long)guild);
+    return rest_send(r, "GET", path, NULL, cb, ud);
+}
+
+int rest_get_dm_channels(rest *r, rest_cb cb, void *ud){
+    return rest_send(r, "GET", "/api/v9/users/@me/channels", NULL, cb, ud);
+}
+
 static uint64_t retry_after_ms(const char *body){
     jl_val_t *v = body ? jl_parse(body, strlen(body)) : NULL;
     uint64_t ms = 1000;

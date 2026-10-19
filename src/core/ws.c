@@ -266,9 +266,7 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
      * frame (usually HELLO arriving early) and MUST be kept, not dropped. */
     char hdr[2048]; int hlen=0, rd; int64_t t0=orbis_mono_s();
     int header_end = -1;
-    extern int daemon_stop_requested(void) __attribute__((weak));
     while(hlen<(int)sizeof hdr-1){
-        if(daemon_stop_requested && daemon_stop_requested()){ log_msg("ws: hs aborted (stop)"); goto fail; }
         rd = tls_read(w->tls, hdr+hlen, sizeof hdr-1-(size_t)hlen);
         if(rd>0){
             hlen+=rd; hdr[hlen]=0;

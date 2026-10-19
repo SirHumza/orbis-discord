@@ -19,7 +19,7 @@ Gates: host `make -C tests test` · PS4 `./scripts/build.sh elf` · console FTP 
 - [x] T9 main layout skeleton + pad navigation + live gateway session (`platform/input.c`, `nav.c`, `screen_main.c`, `test_nav`)
 - [x] T10 message view: history fetch `GET /channels/{id}/messages?limit=50`, wrapping, grouping, day separators, live append, scroll paging (`rest_get_messages`, `msgview.c`, `test_msgview`)
 - [x] T11 composer + IME dialog (sceCommonDialog) + send `POST /channels/{id}/messages`, optimistic append + ack correction (`platform/ime.c`, `test_ime_utf8`)
-- [ ] T12 member list + presence dots + offline banner + DM list (`GET /users/@me/channels`) + PKG packaging (`make pkg`)
+- [x] T12 member list + presence dots + offline banner + DM list (`GET /users/@me/channels`) + PKG packaging (`make pkg`)
 - [ ] Full parity feature backlog (see README roadmap)
 - [ ] Final whole-branch review (fresh reviewer) + one fix pass
 - [ ] Deploy to console + on-device smoke checklist (login → guild → channel → history → send → emoji → reconnect)
