@@ -75,6 +75,8 @@ void store_put_message(store *st, const message *in){
         cur->has_edit = in->has_edit;
         cur->natt = in->natt;
         memcpy(cur->att, in->att, sizeof cur->att);
+        cur->nemb = in->nemb;
+        memcpy(cur->emb, in->emb, sizeof cur->emb);
         st->rev++;
         return;
     }

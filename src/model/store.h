@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #define MSG_MAX_ATT 4
+#define MSG_MAX_EMB 2
 
 typedef struct {
     char url[320];
@@ -11,6 +12,16 @@ typedef struct {
     int w, h, size;
     int image;
 } attachment;
+
+typedef struct {
+    char title[128];
+    char desc[512];
+    char url[256];
+    char image_url[320];
+    int image_w, image_h;
+    uint32_t color;
+    int has_color;
+} embed;
 
 typedef struct message {
     uint64_t id, chan, author_id;
@@ -24,6 +35,8 @@ typedef struct message {
     uint64_t nonce;
     attachment att[MSG_MAX_ATT];
     int natt;
+    embed emb[MSG_MAX_EMB];
+    int nemb;
     struct message *next;
 } message;
 

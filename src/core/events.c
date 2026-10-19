@@ -114,6 +114,10 @@ static int on_message_update(gateway *g, jl_val_t *d){
             m.natt = old->natt;
             memcpy(m.att, old->att, sizeof m.att);
         }
+        if(m.nemb == 0){
+            m.nemb = old->nemb;
+            memcpy(m.emb, old->emb, sizeof m.emb);
+        }
     }
     m.has_edit = 1;
     store_put_message(gw_store(g), &m);

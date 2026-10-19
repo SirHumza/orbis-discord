@@ -612,7 +612,7 @@ static void draw_messages(main_ctx *L){
     for(i = 0; i < L->mv.n; i++){
         const mv_line *ln = &L->mv.lines[i];
         int y = CHAT_Y0 + ln->y - L->top_px;
-        int lh = ln->att >= 0 && ln->att_h > 0 ? ln->att_h : MV_LINE_H;
+        int lh = ln->att_h > 0 ? ln->att_h : MV_LINE_H;
         if(y + lh < CHAT_Y0) continue;
         if(y > CHAT_Y0 + CHAT_VIEW_H) break;
         if(ln->is_sep){
@@ -636,6 +636,26 @@ static void draw_messages(main_ctx *L){
                 continue;
             trunc_utf8(fb, sizeof fb, a->name[0] ? a->name : "attachment", 56);
             ui_text(ax, y + 4, fb, UI_TEXT_LINK, 14);
+        } else if(ln->emb >= 0 && ln->emb < ln->m->nemb){
+            const embed *e = &ln->m->emb[ln->emb];
+            int x0 = CHAT_X + MSG_PAD + MSG_INDENT;
+            char fb[MV_MEASURE_MAX + 1];
+            uint32_t bar = e->has_color ? e->color : UI_SEP;
+            ui_rect(x0 + 4, y, CHAT_X + CHAT_W - MSG_PAD - x0 - 4, lh, UI_CHANNEL_BG);
+            ui_rect(x0, y, 4, lh, bar);
+            if(ln->emb_kind == 3){
+                if(!ui_img(e->image_url, x0 + 16, y, ln->att_w, ln->att_h))
+                    ui_text(x0 + 16, y + 4, "embed image", UI_TEXT_DIM, 14);
+            } else if(ln->emb_kind == 1){
+                trunc_utf8(fb, sizeof fb, e->title, 70);
+                ui_text(x0 + 16, y + 3, fb, UI_TEXT, 16);
+            } else {
+                int len = ln->len;
+                if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
+                memcpy(fb, e->desc + ln->off, (size_t)len);
+                fb[len] = 0;
+                ui_text(x0 + 16, y + 2, fb, UI_TEXT_DIM, 14);
+            }
         } else if(ln->author){
             char tbuf[8];
             int nw, tx;

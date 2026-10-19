@@ -58,5 +58,36 @@ int msg_from_json(message *m, jl_val_t *o){
             m->natt++;
         }
     }
+    {
+        jl_val_t *embs = field(o, "embeds");
+        if(embs && embs->type == JL_ARRAY){
+            for(i = 0; i < embs->count && m->nemb < MSG_MAX_EMB; i++){
+                jl_val_t *ej = jl_arr_at(embs, i);
+                embed *e = &m->emb[m->nemb];
+                jl_val_t *img = field(ej, "image");
+                jl_val_t *th = field(ej, "thumbnail");
+                jl_val_t *col = field(ej, "color");
+                snprintf(e->title, sizeof e->title, "%s", jstr(field(ej, "title")));
+                snprintf(e->desc, sizeof e->desc, "%s", jstr(field(ej, "description")));
+                snprintf(e->url, sizeof e->url, "%s", jstr(field(ej, "url")));
+                if(img && jstr(field(img, "url"))[0]){
+                    snprintf(e->image_url, sizeof e->image_url, "%s",
+                             jstr(field(img, "url")));
+                    e->image_w = jint(field(img, "width"));
+                    e->image_h = jint(field(img, "height"));
+                } else if(th && jstr(field(th, "url"))[0]){
+                    snprintf(e->image_url, sizeof e->image_url, "%s",
+                             jstr(field(th, "url")));
+                    e->image_w = jint(field(th, "width"));
+                    e->image_h = jint(field(th, "height"));
+                }
+                if(col && col->type == JL_NUMBER){
+                    e->has_color = 1;
+                    e->color = 0xFF000000u | ((uint32_t)col->num & 0xFFFFFFu);
+                }
+                if(e->title[0] || e->desc[0] || e->image_url[0]) m->nemb++;
+            }
+        }
+    }
     return 1;
 }

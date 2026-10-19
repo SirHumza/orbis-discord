@@ -27,6 +27,8 @@ typedef struct {
     int y;              /* absolute top y inside the content */
     int att;            /* attachment index, -1 for text rows */
     int att_w, att_h;   /* thumbnail box for image attachments */
+    int emb;            /* embed index, -1 for non-embed rows */
+    int emb_kind;       /* 1 title, 2 description, 3 image */
 } mv_line;
 
 typedef struct {

@@ -50,6 +50,41 @@ TEST(test_msgjson_edit_flag_and_svg){
     jl_free(v);
 }
 
+TEST(test_msgjson_embed_with_image){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"embeds\":[{"
+        "\"title\":\"Hello\",\"description\":\"World desc\",\"url\":\"https://x\","
+        "\"color\":5814783,\"image\":{\"url\":\"https://cdn.discordapp.com/a.png\","
+        "\"width\":800,\"height\":400}}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.nemb, 1);
+    ASSERT_EQ_STR(m.emb[0].title, "Hello");
+    ASSERT_EQ_STR(m.emb[0].desc, "World desc");
+    ASSERT_EQ_INT(m.emb[0].has_color, 1);
+    ASSERT_EQ_INT(m.emb[0].color, 0xFF58B9FF);
+    ASSERT_EQ_INT(m.emb[0].image_w, 800);
+    ASSERT_EQ_INT(m.emb[0].image_h, 400);
+    jl_free(v);
+}
+
+TEST(test_msgjson_embed_thumbnail_fallback){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"embeds\":[{"
+        "\"title\":\"T\",\"thumbnail\":{\"url\":\"https://cdn.discordapp.com/t.png\","
+        "\"width\":80,\"height\":80}}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.nemb, 1);
+    ASSERT_TRUE(strstr(m.emb[0].image_url, "t.png") != NULL);
+    ASSERT_EQ_INT(m.emb[0].has_color, 0);
+    jl_free(v);
+}
+
 TEST(test_msgjson_requires_id_and_channel){
     const char *json = "{\"id\":\"5\",\"content\":\"x\"}";
     jl_val_t *v = jl_parse(json, strlen(json));
@@ -62,5 +97,7 @@ TEST(test_msgjson_requires_id_and_channel){
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
+    g_tests_run++; test_msgjson_embed_with_image();
+    g_tests_run++; test_msgjson_embed_thumbnail_fallback();
     g_tests_run++; test_msgjson_requires_id_and_channel();
 }
