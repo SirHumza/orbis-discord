@@ -109,6 +109,15 @@ typedef struct {
     int menu_items[5];
     int react_pick;
     int react_i;
+    int pins;
+    int pins_pending;
+    int pins_loaded;
+    uint64_t pins_chan;
+    uint64_t pin_ids[50];
+    int pin_ids_n;
+    const message *pin_list[50];
+    int pin_n;
+    int pin_i;
 } main_ctx;
 
 typedef struct {
@@ -386,6 +395,90 @@ static void put_message_json(main_ctx *L, jl_val_t *o){
     if(!msg_from_json(&m, o)) return;
     msg_resolve_mentions(L->app->st, &m, gw_self_id(L->app->gw));
     store_put_message(L->app->st, &m);
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+} pins_fetch;
+
+static void pins_recollect(main_ctx *L){
+    int i;
+    L->pin_n = 0;
+    for(i = 0; i < L->pin_ids_n; i++){
+        const message *m = store_message(L->app->st, L->pins_chan,
+                                         L->pin_ids[i]);
+        if(m) L->pin_list[L->pin_n++] = m;
+    }
+}
+
+static void pins_cb(int status, const char *body, void *ud){
+    pins_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v;
+    int i, j;
+    L->pins_pending = 0;
+    if(status != 200){
+        log_msg("rest: pins failed (%d)", status);
+        set_status(L, "Pins failed");
+        free(f);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    L->pin_ids_n = 0;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count && L->pin_ids_n < 50; i++){
+            jl_val_t *o = jl_arr_at(v, i);
+            message m;
+            if(!msg_from_json(&m, o)) continue;
+            msg_resolve_mentions(L->app->st, &m, gw_self_id(L->app->gw));
+            L->pin_ids[L->pin_ids_n++] = m.id;
+            store_put_message(L->app->st, &m);
+        }
+    }
+    jl_free(v);
+    for(i = 1; i < L->pin_ids_n; i++){
+        uint64_t k = L->pin_ids[i];
+        for(j = i - 1; j >= 0 && L->pin_ids[j] < k; j--)
+            L->pin_ids[j + 1] = L->pin_ids[j];
+        L->pin_ids[j + 1] = k;
+    }
+    pins_recollect(L);
+    L->pins_loaded = 1;
+    L->pins_chan = f->chan;
+    L->pin_i = 0;
+    log_msg("rest: %d pins for %llu", L->pin_n,
+            (unsigned long long)f->chan);
+    free(f);
+}
+
+static void pins_open(main_ctx *L, uint64_t chan){
+    char path[96];
+    pins_fetch *f;
+    L->pins = 1;
+    if(L->pins_loaded && L->pins_chan == chan){
+        pins_recollect(L);
+        L->pin_i = 0;
+        return;
+    }
+    L->pins_loaded = 0;
+    L->pin_n = 0;
+    L->pin_ids_n = 0;
+    L->pins_chan = chan;
+    L->pin_i = 0;
+    if(L->pins_pending) return;
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/pins",
+             (unsigned long long)chan);
+    L->pins_pending = 1;
+    if(rest_send(L->app->rest, "GET", path, NULL, pins_cb, f) != 0){
+        L->pins_pending = 0;
+        free(f);
+        set_status(L, "Pins failed");
+    }
 }
 
 static void messages_cb(int status, const char *body, void *ud){
@@ -986,6 +1079,39 @@ static void draw_viewer(main_ctx *L){
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
 }
 
+static void draw_pins(main_ctx *L){
+    int w = 760, h = 560;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Pinned messages", UI_TEXT, 18);
+    if(L->pins_pending){
+        ui_text(x + 20, y + 60, "Loading pins...", UI_TEXT_DIM, 16);
+    } else if(L->pin_n == 0){
+        ui_text(x + 20, y + 60, "No pinned messages", UI_TEXT_DIM, 16);
+    } else {
+        first = L->pin_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->pin_n - 9) first = L->pin_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->pin_n && i < first + 9; i++){
+            const message *m = L->pin_list[i];
+            char snip[128], who[96];
+            int ry = y + 56 + (i - first) * 52;
+            if(i == L->pin_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 46, 6, UI_BLURPLE);
+            snprintf(who, sizeof who, "@%s", m->author_name);
+            trunc_utf8(snip, sizeof snip, m->content, 70);
+            ui_text(x + 24, ry, who, UI_TEXT, 14);
+            if(snip[0]) ui_text(x + 24, ry + 20, snip, UI_TEXT_DIM, 14);
+        }
+    }
+    ui_text(x + 20, y + h - 30,
+            L->pin_n ? "UP/DOWN browse   CROSS jump   CIRCLE close"
+                     : "CIRCLE close",
+            UI_TEXT_DIM, 12);
+}
+
 static void draw_react_pick(main_ctx *L){
     int n = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
     int cell = 52, w = 32 + n * cell, h = 110;
@@ -1351,6 +1477,24 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.pins){
+                    if(e == IE_UP && L.pin_i > 0){
+                        L.pin_i--;
+                    } else if(e == IE_DOWN && L.pin_i + 1 < L.pin_n){
+                        L.pin_i++;
+                    } else if(e == IE_SELECT && L.pin_n > 0){
+                        const message *m = L.pin_list[L.pin_i];
+                        if(m){
+                            L.pins = 0;
+                            L.sel = 1;
+                            L.sel_id = m->id;
+                            sel_into_view(&L);
+                        }
+                    } else if(e == IE_BACK || e == IE_MENU || e == IE_PINS){
+                        L.pins = 0;
+                    }
+                    continue;
+                }
                 if(L.sel){
                     if(e == IE_UP || e == IE_DOWN){
                         const message *m = store_message_step(
@@ -1422,6 +1566,9 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_MENU){
                     if(L.focus == 2 && v.active)
                         sel_begin(&L, v.active->id);
+                } else if(e == IE_PINS){
+                    if(L.focus == 2 && v.active)
+                        pins_open(&L, v.active->id);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1433,6 +1580,7 @@ int screen_main_run(app_state *st){
         if(L.viewer) draw_viewer(&L);
         if(L.menu) draw_menu(&L);
         if(L.react_pick) draw_react_pick(&L);
+        if(L.pins) draw_pins(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

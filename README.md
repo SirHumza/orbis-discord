@@ -34,6 +34,7 @@ rest of the feature set are the next milestones.
 | Image viewer: fullscreen fit, UP/DOWN cycling, TRIANGLE/CROSS close | Done | host tests, PS4 elf |
 | Message actions: SQUARE select, UP/DOWN step, CROSS menu (reply/edit/delete) | Done | host tests, PS4 elf |
 | Reaction interaction: quick picker, REST PUT/DELETE own reaction | Done | host tests, PS4 elf |
+| Pins: L2 overlay, pinned message list, CROSS jumps to the message | Done | PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -101,7 +102,8 @@ Phase 2, messaging parity:
 - [ ] Custom emoji picker, GIF picker
 - [x] Reply previews: referenced-message preview rows, preserved across edits
 - [x] Reply send (REST), own-message edit/delete via SQUARE-selected action menu
-- [ ] Pins, message search
+- [x] Pins overlay (L2) with jump-to-message
+- [ ] Message search
 - [x] Typing indicators: TYPING_START receive, composer strip, /typing POST on composer open
 - [x] Mentions: @user/#channel/:emoji: token resolution, mentions-me row highlight
 - [x] Unread dots on channel and DM rows (read state is session-scoped)
