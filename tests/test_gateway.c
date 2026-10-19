@@ -179,6 +179,20 @@ TEST(test_events_mentions){
     gw_free(g); store_free(s);
 }
 
+TEST(test_gateway_msg_sound){
+    setup();
+    feed("{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{\"session_id\":\"x\",\"user\":{\"id\":\"5\",\"username\":\"me\"},\"guilds\":[],\"private_channels\":[]}}");
+    ASSERT_EQ_INT(gw_take_msg_sound(g), 0);
+    feed("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"plain\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_INT(gw_take_msg_sound(g), 1);
+    ASSERT_EQ_INT(gw_take_msg_sound(g), 0);
+    feed("{\"op\":0,\"s\":3,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"21\",\"channel_id\":\"100\",\"content\":\"<@5> ping\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_INT(gw_take_msg_sound(g), 2);
+    feed("{\"op\":0,\"s\":4,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"22\",\"channel_id\":\"100\",\"content\":\"mine\",\"author\":{\"id\":\"5\",\"username\":\"me\"}}}");
+    ASSERT_EQ_INT(gw_take_msg_sound(g), 0);
+    gw_free(g); store_free(s);
+}
+
 TEST(test_events_role_colors){
     setup();
     const member *ms[4];
@@ -228,4 +242,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_mentions();
     g_tests_run++; test_events_role_colors();
     g_tests_run++; test_gateway_presence_payload();
+    g_tests_run++; test_gateway_msg_sound();
 }

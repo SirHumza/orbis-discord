@@ -11,6 +11,7 @@
 #include "ui/screens.h"
 #include "platform/cdn.h"
 #include "platform/ime.h"
+#include "platform/sound.h"
 #include "platform/token.h"
 #include <stdio.h>
 #include <string.h>
@@ -36,6 +37,7 @@ int main(void){
     if(!ui_init()){ log_msg("ui init fail"); return 1; }
     ime_init();
     cdn_init();
+    sound_init();
 
     for(;;){
         if(relogin || !token_load(app.token, sizeof app.token)){

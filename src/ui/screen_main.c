@@ -24,6 +24,7 @@
 #include "../image.h"
 #include "../platform/input.h"
 #include "../platform/ime.h"
+#include "../platform/sound.h"
 #include "../platform/tenor_net.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -2132,6 +2133,11 @@ int screen_main_run(app_state *st){
                 if(op != 1) continue;
                 L.recv[n] = 0;
                 ev = gw_feed(g, L.recv, (size_t)n);
+                if(ev > 0){
+                    int snd = gw_take_msg_sound(g);
+                    if(snd == 2) sound_mention();
+                    else if(snd == 1) sound_message();
+                }
                 if(ev & GW_EV_HELLO){
                     char out[2048];
                     int in = gw_identify(g, out, sizeof out);

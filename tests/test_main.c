@@ -8,6 +8,7 @@ int main(void){
     run_store_tests();
     run_msgjson_tests();
     run_tenor_tests();
+    run_tone_tests();
     run_cdnurl_tests();
     run_gateway_tests();
     run_rest_tests();

@@ -133,6 +133,7 @@ static int on_message_create(gateway *g, jl_val_t *d){
     if(!msg_from_json(&m, d)) return GW_EV_NONE;
     msg_resolve_mentions(gw_store(g), &m, gw_self_id(g));
     store_put_message(gw_store(g), &m);
+    if(m.author_id != gw_self_id(g)) gw_note_msg_sound(g, m.mentions_me);
     return GW_EV_MESSAGE;
 }
 

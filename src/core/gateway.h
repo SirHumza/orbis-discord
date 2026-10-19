@@ -38,4 +38,7 @@ void gw_on_reconnected(gateway *);
 int gw_ack_expired(gateway *, uint64_t now_ms);
 void gw_on_ready(gateway *, const char *session_id, const char *name, uint64_t id);
 store *gw_store(gateway *);
+/* Notification sound state: 2 = mention, 1 = message, 0 = none. */
+void gw_note_msg_sound(gateway *, int mentions);
+int gw_take_msg_sound(gateway *);
 #endif

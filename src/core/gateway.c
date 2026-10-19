@@ -20,6 +20,7 @@ struct gateway {
     int reconnect_attempts;
     uint64_t reconnect_at;
     int reconnect_pending;
+    int msg_sound;
     char ack_buf[64];
 };
 
@@ -40,6 +41,20 @@ gateway *gw_new(store *st, const char *token){
 }
 
 void gw_free(gateway *g){ free(g); }
+
+void gw_note_msg_sound(gateway *g, int mentions){
+    if(!g) return;
+    if(mentions) g->msg_sound = 2;
+    else if(g->msg_sound == 0) g->msg_sound = 1;
+}
+
+int gw_take_msg_sound(gateway *g){
+    int k;
+    if(!g) return 0;
+    k = g->msg_sound;
+    g->msg_sound = 0;
+    return k;
+}
 
 static jl_val_t *obj(jl_val_t *v, const char *k){
     return v && v->type == JL_OBJECT ? jl_obj_get(v, k) : NULL;
