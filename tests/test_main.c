@@ -8,6 +8,7 @@ int main(void){
     run_store_tests();
     run_gateway_tests();
     run_rest_tests();
+    run_remoteauth_tests();
     printf("%d checks, %d failed\n", g_tests_run, g_tests_failed);
     return g_tests_failed ? 1 : 0;
 }

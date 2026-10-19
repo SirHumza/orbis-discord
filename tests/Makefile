@@ -1,7 +1,13 @@
 CC ?= cc
 CFLAGS += -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -Wall -Wextra -Werror
 SRC := ../src/core
-TESTS := test_main.c test_ws_streaming.c test_json_b64.c test_store.c test_gateway.c test_rest.c
+MODEL := ../src/model
+MBEDTLS := ../third_party/mbedtls
+TESTS := test_main.c test_ws_streaming.c test_json_b64.c test_store.c test_gateway.c test_rest.c test_remoteauth.c
+APP_SRCS := $(SRC)/b64.c $(SRC)/jsonlite.c $(SRC)/gateway.c $(SRC)/events.c \
+            $(SRC)/http.c $(SRC)/rest.c $(SRC)/remoteauth.c \
+            $(MODEL)/store.c $(MODEL)/snowflake.c
+MBEDTLS_SRCS := $(filter-out $(MBEDTLS)/library/net_sockets.c $(MBEDTLS)/library/timing.c $(wildcard $(MBEDTLS)/library/ssl_*.c),$(wildcard $(MBEDTLS)/library/*.c))
 TARGET := run_tests
 
 .PHONY: test clean
@@ -9,8 +15,9 @@ TARGET := run_tests
 test: $(TARGET)
 	./$(TARGET)
 
-$(TARGET): $(TESTS) $(SRC)/b64.c $(SRC)/jsonlite.c ../src/model/store.c ../src/model/snowflake.c ../src/core/gateway.c ../src/core/events.c ../src/core/http.c ../src/core/rest.c $(SRC)/ws.h $(SRC)/ws_env.h
-	$(CC) $(CFLAGS) -I$(SRC) -I../src/model -o $@ $(TESTS) $(SRC)/b64.c $(SRC)/jsonlite.c ../src/model/store.c ../src/model/snowflake.c ../src/core/gateway.c ../src/core/events.c ../src/core/http.c ../src/core/rest.c
+$(TARGET): $(TESTS) $(APP_SRCS) $(MBEDTLS_SRCS)
+	$(CC) $(CFLAGS) -I$(SRC) -I$(MODEL) -I$(MBEDTLS)/include -o $@ \
+		$(TESTS) $(APP_SRCS) $(MBEDTLS_SRCS) -lm
 
 clean:
 	rm -f $(TARGET)
