@@ -48,6 +48,7 @@ rest of the feature set are the next milestones.
 | Channel categories: header rows group channels, CROSS collapses a category | Done | PS4 elf |
 | Channel permissions: role/overwrite VIEW filtering, SEND_MESSAGES gating | Done | host tests, PS4 elf |
 | Channel invites: SQUARE on a text channel lists, creates, and revokes invites | Done | host tests, PS4 elf |
+| Threads: TRIANGLE lists active threads, CROSS opens one in the channel list | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -64,7 +65,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (161 checks) + fixtures
+tests/        host test suite (162 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -132,7 +133,8 @@ Phase 2, messaging parity:
 - [x] Channel categories (grouped channel list, CROSS collapse)
 - [x] Channel permissions (VIEW_CHANNEL filtering, SEND_MESSAGES gating)
 - [x] Channel invites (list/create/revoke)
-- [ ] Threads, forums
+- [x] Active threads (list, open)
+- [ ] Forums
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback
 - [ ] Mic capture (sceAudioIn) and input device selection

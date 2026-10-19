@@ -296,6 +296,30 @@ TEST(test_msgjson_invites){
     jl_free(v);
 }
 
+TEST(test_msgjson_threads){
+    const char *json =
+        "{\"threads\":["
+        "{\"id\":\"11\",\"parent_id\":\"500\",\"name\":\"one\","
+        "\"message_count\":4},"
+        "{\"id\":\"22\",\"parent_id\":\"600\",\"name\":\"other\","
+        "\"message_count\":9},"
+        "{\"id\":\"33\",\"parent_id\":\"500\",\"name\":\"two\","
+        "\"message_count\":0},"
+        "{\"parent_id\":\"500\",\"name\":\"noid\"}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    thread_item t[4];
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(threads_from_json(v, 500, t, 4), 2);
+    ASSERT_EQ_INT(t[0].id, 11);
+    ASSERT_EQ_STR(t[0].name, "one");
+    ASSERT_EQ_INT(t[0].messages, 4);
+    ASSERT_EQ_INT(t[1].id, 33);
+    ASSERT_EQ_INT(threads_from_json(NULL, 500, t, 4), 0);
+    ASSERT_EQ_INT(threads_from_json(v, 0, t, 4), 0);
+    ASSERT_EQ_INT(threads_from_json(v, 500, NULL, 4), 0);
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
@@ -313,4 +337,5 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_recipients_invalid();
     g_tests_run++; test_msgjson_overwrites();
     g_tests_run++; test_msgjson_invites();
+    g_tests_run++; test_msgjson_threads();
 }

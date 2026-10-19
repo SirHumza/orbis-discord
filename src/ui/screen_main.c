@@ -163,6 +163,15 @@ typedef struct {
     int iview_i;
     uint64_t iview_chan;
     invite_item iview_list[16];
+    int tview;
+    int tview_pending;
+    int tview_n;
+    int tview_i;
+    uint64_t tview_chan;
+    uint64_t tview_guild;
+    thread_item tview_list[16];
+    uint64_t thread_chan;
+    int thread_jump;
     uint64_t badge_rev;
     uint64_t badge_last_read;
     int badge_n;
@@ -975,6 +984,63 @@ static void iview_revoke(main_ctx *L, uint64_t chan, const char *code){
     }
 }
 
+static void tview_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v = (status == 200 && body) ? jl_parse(body, strlen(body))
+                                          : NULL;
+    L->tview_pending = 0;
+    L->tview_n = 0;
+    if(v)
+        L->tview_n = threads_from_json(v, L->tview_chan, L->tview_list, 16);
+    if(status != 200) set_status(L, "Threads failed");
+    if(L->tview_i >= L->tview_n) L->tview_i = L->tview_n > 0
+                                                  ? L->tview_n - 1 : 0;
+    jl_free(v);
+    free(f);
+}
+
+static void tview_open(main_ctx *L, uint64_t chan, uint64_t guild){
+    char path[128];
+    gview_op *f;
+    L->tview = 1;
+    L->tview_i = 0;
+    L->tview_n = 0;
+    L->tview_chan = chan;
+    L->tview_guild = guild;
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    L->tview_pending = 1;
+    snprintf(path, sizeof path, "/api/v9/guilds/%llu/threads/active",
+             (unsigned long long)guild);
+    if(rest_send(L->app->rest, "GET", path, NULL, tview_cb, f) != 0){
+        L->tview_pending = 0;
+        free(f);
+        set_status(L, "Threads failed");
+    }
+}
+
+static void tview_join(main_ctx *L){
+    const thread_item *t;
+    channel ch;
+    if(L->tview_n <= 0) return;
+    t = &L->tview_list[L->tview_i];
+    memset(&ch, 0, sizeof ch);
+    ch.id = t->id;
+    ch.guild = L->tview_guild;
+    ch.type = 11;
+    ch.parent = L->tview_chan;
+    ch.position = 100000;
+    snprintf(ch.name, sizeof ch.name, "%s", t->name);
+    store_put_channel(L->app->st, &ch);
+    L->thread_chan = t->id;
+    L->thread_jump = 1;
+    L->tview = 0;
+    L->focus = 1;
+}
+
 typedef struct {
     main_ctx *ctx;
     uint64_t uid;
@@ -1639,6 +1705,14 @@ static void view_build(main_ctx *L, frame_view *v){
                 v->text[v->nt++] = c2;
         }
     }
+    if(!v->dm && L->thread_chan && v->ng > 0){
+        const channel *tc = store_channel(L->app->st, L->thread_chan);
+        if(tc && tc->guild == v->guilds[v->gi]->id && v->nt < 64){
+            v->text[v->nt++] = tc;
+            if(L->thread_jump) L->cn.index = v->nt - 1;
+        }
+    }
+    L->thread_jump = 0;
     nav_step(&L->cn, IE_NONE, v->nt);
     v->ci = nav_index(&L->cn);
     if(v->nt > 0 && v->text[v->ci]->type != 4)
@@ -2135,6 +2209,36 @@ static void draw_iview(main_ctx *L){
     }
     ui_text(x + 20, y + h - 30,
             "CROSS revoke   SQUARE create   CIRCLE close",
+            UI_TEXT_DIM, 12);
+}
+
+static void draw_tview(main_ctx *L){
+    int w = 640, h = 480;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Active threads", UI_TEXT, 18);
+    if(L->tview_pending){
+        ui_text(x + 20, y + 60, "Loading threads...", UI_TEXT_DIM, 16);
+    } else if(L->tview_n == 0){
+        ui_text(x + 20, y + 60, "No active threads", UI_TEXT_DIM, 16);
+    } else {
+        first = L->tview_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->tview_n - 9) first = L->tview_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->tview_n && i < first + 9; i++){
+            const thread_item *t = &L->tview_list[i];
+            char sub[64];
+            int ry = y + 56 + (i - first) * 44;
+            if(i == L->tview_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 38, 6, UI_BLURPLE);
+            snprintf(sub, sizeof sub, "%d messages", t->messages);
+            ui_text(x + 24, ry, t->name, UI_TEXT, 16);
+            ui_text(x + 24, ry + 18, sub, UI_TEXT_DIM, 12);
+        }
+    }
+    ui_text(x + 20, y + h - 30, "CROSS open   CIRCLE close",
             UI_TEXT_DIM, 12);
 }
 
@@ -2840,6 +2944,18 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.tview){
+                    if(e == IE_UP && L.tview_i > 0){
+                        L.tview_i--;
+                    } else if(e == IE_DOWN && L.tview_i + 1 < L.tview_n){
+                        L.tview_i++;
+                    } else if(e == IE_SELECT && L.tview_n > 0){
+                        tview_join(&L);
+                    } else if(e == IE_BACK || e == IE_VIEW){
+                        L.tview = 0;
+                    }
+                    continue;
+                }
                 if(L.profile){
                     if(e == IE_SELECT || e == IE_BACK || e == IE_MENU){
                         L.profile = 0;
@@ -2951,6 +3067,8 @@ int screen_main_run(app_state *st){
                         open_viewer(&L, v.active->id);
                     else if(L.focus == 1 && v.active && v.active->type == 3)
                         gview_open(&L, v.active->id);
+                    else if(L.focus == 1 && v.active && v.active->type == 0)
+                        tview_open(&L, v.active->id, v.guilds[v.gi]->id);
                 } else if(e == IE_MENU){
                     if(L.focus == 2 && v.active)
                         sel_begin(&L, v.active->id);
@@ -2971,8 +3089,10 @@ int screen_main_run(app_state *st){
                     L.status_i = 0;
                 } else if(e == IE_GIF){
                     if(L.focus == 2 && v.active) gif_prompt(&L);
-                } else if(e == IE_BACK)
-                    log_msg("input: back unbound");
+                } else if(e == IE_BACK){
+                    if(L.thread_chan) L.thread_chan = 0;
+                    else log_msg("input: back unbound");
+                }
             }
         }
 
@@ -2986,6 +3106,7 @@ int screen_main_run(app_state *st){
         if(L.search) draw_search(&L);
         if(L.gview) draw_gview(&L);
         if(L.iview) draw_iview(&L);
+        if(L.tview) draw_tview(&L);
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
         if(L.profile) draw_profile(&L);

@@ -316,3 +316,28 @@ int invites_from_json(jl_val_t *arr, invite_item *out, int cap){
     }
     return n;
 }
+
+int threads_from_json(jl_val_t *obj, uint64_t parent, thread_item *out,
+                      int cap){
+    jl_val_t *arr;
+    int n = 0, i;
+    if(!obj || obj->type != JL_OBJECT || !out || cap <= 0) return 0;
+    arr = jl_obj_get(obj, "threads");
+    if(!arr || arr->type != JL_ARRAY) return 0;
+    for(i = 0; i < arr->count && n < cap; i++){
+        jl_val_t *o = jl_arr_at(arr, i);
+        uint64_t id, par;
+        const char *name;
+        if(!o || o->type != JL_OBJECT) continue;
+        id = jid(field(o, "id"));
+        par = jid(field(o, "parent_id"));
+        if(!id || par != parent) continue;
+        name = jstr(field(o, "name"));
+        memset(&out[n], 0, sizeof out[n]);
+        out[n].id = id;
+        snprintf(out[n].name, sizeof out[n].name, "%s", name);
+        out[n].messages = jint(field(o, "message_count"));
+        n++;
+    }
+    return n;
+}

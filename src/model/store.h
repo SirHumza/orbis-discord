@@ -121,6 +121,12 @@ typedef struct {
     int uses, max_uses, max_age;
 } invite_item;
 
+typedef struct {
+    uint64_t id;
+    char name[100];
+    int messages;
+} thread_item;
+
 typedef struct store store;
 
 store *store_new(void);
