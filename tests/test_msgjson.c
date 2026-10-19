@@ -193,6 +193,29 @@ TEST(test_msgjson_requires_id_and_channel){
     jl_free(v);
 }
 
+TEST(test_msgjson_emoji_item){
+    const char *json = "{\"id\":\"41771983429993937\",\"name\":\"LUL\","
+                       "\"animated\":true,\"available\":true}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    emoji_item e;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(emoji_from_json(&e, v), 1);
+    ASSERT_EQ_INT(e.id, 41771983429993937LL);
+    ASSERT_EQ_STR(e.name, "LUL");
+    ASSERT_EQ_INT(e.animated, 1);
+    jl_free(v);
+}
+
+TEST(test_msgjson_emoji_item_invalid){
+    emoji_item e;
+    const char *json = "\"nope\"";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(emoji_from_json(&e, NULL), 0);
+    ASSERT_EQ_INT(emoji_from_json(&e, v), 0);
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
@@ -204,4 +227,6 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_resolve_mentions();
     g_tests_run++; test_msgjson_stickers();
     g_tests_run++; test_msgjson_requires_id_and_channel();
+    g_tests_run++; test_msgjson_emoji_item();
+    g_tests_run++; test_msgjson_emoji_item_invalid();
 }

@@ -67,6 +67,8 @@ typedef struct {
 } frame_view;
 
 #define FRIEND_MAX 64
+#define EMOJI_MAX 64
+#define EMOJI_PICK 8
 
 typedef struct {
     uint64_t id;
@@ -74,6 +76,13 @@ typedef struct {
     char avatar[128];
     int type;
 } friend_entry;
+
+typedef struct {
+    uint64_t id;
+    char name[64];
+    int animated;
+    char url[160];
+} emoji_entry;
 
 typedef struct {
     app_state *app;
@@ -118,6 +127,12 @@ typedef struct {
     int menu_items[6];
     int react_pick;
     int react_i;
+    int emoji_pending;
+    int emoji_loaded;
+    int emoji_gen;
+    uint64_t emoji_guild;
+    int react_custom_n;
+    emoji_entry react_custom[EMOJI_MAX];
     int pins;
     int pins_pending;
     int pins_loaded;
@@ -1055,6 +1070,81 @@ static const char *QUICK_EMOJI[] = {
     "\xF0\x9F\x94\xA5", "\xF0\x9F\x91\x80"
 };
 
+typedef struct {
+    main_ctx *ctx;
+    int gen;
+} emoji_fetch_op;
+
+static void emoji_cb(int status, const char *body, void *ud){
+    emoji_fetch_op *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v;
+    int i;
+    if(f->gen != L->emoji_gen){
+        free(f);
+        return;
+    }
+    L->emoji_pending = 0;
+    if(status != 200){
+        log_msg("rest: emojis failed (%d)", status);
+        free(f);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    L->react_custom_n = 0;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count && L->react_custom_n < EMOJI_MAX; i++){
+            emoji_item it;
+            emoji_entry *e;
+            if(!emoji_from_json(&it, jl_arr_at(v, i))) continue;
+            e = &L->react_custom[L->react_custom_n++];
+            e->id = it.id;
+            snprintf(e->name, sizeof e->name, "%s", it.name);
+            e->animated = it.animated;
+            snprintf(e->url, sizeof e->url,
+                     "https://cdn.discordapp.com/emojis/%llu.%s",
+                     (unsigned long long)it.id, it.animated ? "gif" : "png");
+        }
+    }
+    jl_free(v);
+    L->emoji_loaded = 1;
+    log_msg("rest: %d custom emojis", L->react_custom_n);
+    free(f);
+}
+
+static void emoji_fetch(main_ctx *L, uint64_t guild){
+    char path[128];
+    emoji_fetch_op *f;
+    if(L->emoji_pending && L->emoji_guild == guild) return;
+    L->emoji_pending = 1;
+    L->emoji_loaded = 0;
+    L->emoji_guild = guild;
+    L->emoji_gen++;
+    L->react_custom_n = 0;
+    f = calloc(1, sizeof *f);
+    if(!f){
+        L->emoji_pending = 0;
+        return;
+    }
+    f->ctx = L;
+    f->gen = L->emoji_gen;
+    snprintf(path, sizeof path, "/api/v9/guilds/%llu/emojis",
+             (unsigned long long)guild);
+    if(rest_send(L->app->rest, "GET", path, NULL, emoji_cb, f) != 0){
+        L->emoji_pending = 0;
+        free(f);
+    }
+}
+
+static void picker_open(main_ctx *L){
+    const channel *ch = store_channel(L->app->st, L->chan_loaded);
+    L->react_pick = 1;
+    L->react_i = 0;
+    if(ch && ch->guild &&
+       (ch->guild != L->emoji_guild || !L->emoji_loaded))
+        emoji_fetch(L, ch->guild);
+}
+
 static const char *menu_label(int item){
     switch(item){
     case 1: return "Reply";
@@ -1140,8 +1230,7 @@ static void menu_choose(main_ctx *L, const message *m, int item){
     } else if(item == 3){
         delete_message(L, m);
     } else if(item == 4){
-        L->react_pick = 1;
-        L->react_i = 0;
+        picker_open(L);
     } else if(item == 5){
         profile_open(L, m);
     }
@@ -1634,17 +1723,32 @@ static void draw_pins(main_ctx *L){
 }
 
 static void draw_react_pick(main_ctx *L){
-    int n = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+    int nu = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+    int nc = L->react_custom_n > EMOJI_PICK ? EMOJI_PICK : L->react_custom_n;
+    int n = nu + nc;
     int cell = 52, w = 32 + n * cell, h = 110;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
     ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
     ui_text(x + 16, y + 10, "Add reaction", UI_TEXT, 14);
-    for(i = 0; i < n; i++){
+    for(i = 0; i < nu; i++){
         int cx = x + 16 + i * cell;
         if(i == L->react_i) ui_rrect(cx, y + 30, 44, 44, 8, UI_BLURPLE);
         ui_text(cx + 8, y + 38, QUICK_EMOJI[i], UI_TEXT, 28);
     }
+    for(i = 0; i < nc; i++){
+        const emoji_entry *e = &L->react_custom[i];
+        int cx = x + 16 + (nu + i) * cell;
+        if(nu + i == L->react_i)
+            ui_rrect(cx, y + 30, 44, 44, 8, UI_BLURPLE);
+        if(!ui_img(e->url, cx + 8, y + 38, 28, 28)){
+            char nm[32];
+            trunc_utf8(nm, sizeof nm, e->name, 8);
+            ui_text(cx + 8, y + 42, nm, UI_TEXT_DIM, 12);
+        }
+    }
+    if(L->emoji_pending && nc == 0)
+        ui_text(x + w - 120, y + 88, "Loading emoji...", UI_TEXT_DIM, 12);
     ui_text(x + 16, y + 84, "CROSS toggle   CIRCLE close", UI_TEXT_DIM, 12);
 }
 
@@ -2020,7 +2124,11 @@ int screen_main_run(app_state *st){
                     continue;
                 }
                 if(L.react_pick){
-                    int n = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+                    int nu = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+                    int nc = L.react_custom_n > EMOJI_PICK ? EMOJI_PICK
+                                                           : L.react_custom_n;
+                    int n = nu + nc;
+                    if(L.react_i >= n) L.react_i = 0;
                     if(e == IE_LEFT || e == IE_UP){
                         L.react_i = (L.react_i + n - 1) % n;
                     } else if(e == IE_RIGHT || e == IE_DOWN){
@@ -2028,7 +2136,16 @@ int screen_main_run(app_state *st){
                     } else if(e == IE_SELECT){
                         const message *m = store_message(
                             L.app->st, L.chan_loaded, L.sel_id);
-                        if(m) react_toggle(&L, m, QUICK_EMOJI[L.react_i]);
+                        if(m && L.react_i < nu){
+                            react_toggle(&L, m, QUICK_EMOJI[L.react_i]);
+                        } else if(m){
+                            const emoji_entry *ce =
+                                &L.react_custom[L.react_i - nu];
+                            char tag[96];
+                            snprintf(tag, sizeof tag, "%s:%llu", ce->name,
+                                     (unsigned long long)ce->id);
+                            react_toggle(&L, m, tag);
+                        }
                         L.react_pick = 0;
                         L.sel = 0;
                     } else if(e == IE_BACK || e == IE_MENU){

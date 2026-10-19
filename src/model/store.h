@@ -86,6 +86,12 @@ typedef struct member {
     int online;
 } member;
 
+typedef struct {
+    uint64_t id;
+    char name[64];
+    int animated;
+} emoji_item;
+
 typedef struct store store;
 
 store *store_new(void);

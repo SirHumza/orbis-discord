@@ -241,3 +241,15 @@ int msg_from_json(message *m, jl_val_t *o){
     }
     return 1;
 }
+
+int emoji_from_json(emoji_item *e, jl_val_t *o){
+    uint64_t id;
+    if(!e || !o || o->type != JL_OBJECT) return 0;
+    id = jid(field(o, "id"));
+    if(!id) return 0;
+    memset(e, 0, sizeof *e);
+    e->id = id;
+    snprintf(e->name, sizeof e->name, "%s", jstr(field(o, "name")));
+    e->animated = jbool(field(o, "animated"));
+    return 1;
+}
