@@ -85,6 +85,22 @@ TEST(test_composer_payload_overflow){
     ASSERT_EQ_INT(composer_payload("", 1, out, 4), -1);
 }
 
+TEST(test_composer_payload_reply){
+    char out[256];
+    int n = composer_payload_reply("hi", 123, 44, 9, out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"content\":\"hi\",\"nonce\":\"123\","
+                       "\"message_reference\":{\"message_id\":\"44\","
+                       "\"channel_id\":\"9\",\"fail_if_not_exists\":false}}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+}
+
+TEST(test_composer_payload_edit){
+    char out[128];
+    int n = composer_payload_edit("new", out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"content\":\"new\"}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+}
+
 void run_ime_utf8_tests(void){
     g_tests_run++; test_utf16_ascii();
     g_tests_run++; test_utf16_two_byte();
@@ -96,4 +112,6 @@ void run_ime_utf8_tests(void){
     g_tests_run++; test_composer_payload_escapes();
     g_tests_run++; test_composer_payload_utf8_bytes();
     g_tests_run++; test_composer_payload_overflow();
+    g_tests_run++; test_composer_payload_reply();
+    g_tests_run++; test_composer_payload_edit();
 }

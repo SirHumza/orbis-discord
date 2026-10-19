@@ -287,6 +287,27 @@ const message *store_messages(store *st, uint64_t chan){
     return c ? c->head : NULL;
 }
 
+const message *store_message(store *st, uint64_t chan, uint64_t id){
+    return st ? msgs_find(st, chan, id) : NULL;
+}
+
+const message *store_newest_message(store *st, uint64_t chan){
+    chan_msgs *c = st ? msgs_for(st, chan, 0) : NULL;
+    return c ? c->tail : NULL;
+}
+
+const message *store_message_step(store *st, uint64_t chan, uint64_t id, int dir){
+    chan_msgs *c = st ? msgs_for(st, chan, 0) : NULL;
+    message *prev = NULL, *cur;
+    if(!c) return NULL;
+    if(dir > 0){
+        cur = msgs_find(st, chan, id);
+        return cur ? cur->next : NULL;
+    }
+    for(cur = c->head; cur && cur->id != id; cur = cur->next) prev = cur;
+    return cur ? prev : NULL;
+}
+
 void store_put_channel(store *st, const channel *in){
     size_t i;
     if(!st || !in) return;

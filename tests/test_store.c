@@ -255,6 +255,26 @@ TEST(test_store_unread){
     store_free(st);
 }
 
+TEST(test_store_message_lookup){
+    store *st = store_new();
+    message a = {.id = 10, .chan = 1, .author_id = 7};
+    message b = {.id = 30, .chan = 1, .author_id = 7};
+    message c = {.id = 50, .chan = 1, .author_id = 7};
+    ASSERT_TRUE(st != NULL);
+    store_put_message(st, &a);
+    store_put_message(st, &b);
+    store_put_message(st, &c);
+    ASSERT_EQ_INT(store_message(st, 1, 30)->id, 30);
+    ASSERT_TRUE(store_message(st, 1, 99) == NULL);
+    ASSERT_EQ_INT(store_newest_message(st, 1)->id, 50);
+    ASSERT_TRUE(store_newest_message(st, 2) == NULL);
+    ASSERT_EQ_INT(store_message_step(st, 1, 30, -1)->id, 10);
+    ASSERT_EQ_INT(store_message_step(st, 1, 30, 1)->id, 50);
+    ASSERT_TRUE(store_message_step(st, 1, 10, -1) == NULL);
+    ASSERT_TRUE(store_message_step(st, 1, 50, 1) == NULL);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -270,4 +290,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_reactions();
     g_tests_run++; test_store_typing();
     g_tests_run++; test_store_unread();
+    g_tests_run++; test_store_message_lookup();
 }

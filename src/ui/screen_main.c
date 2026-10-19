@@ -101,6 +101,12 @@ typedef struct {
     int view_n;
     int view_i;
     char view_urls[MV_IMG_MAX][320];
+    int sel;
+    uint64_t sel_id;
+    int menu;
+    int menu_i;
+    int menu_n;
+    int menu_items[4];
 } main_ctx;
 
 typedef struct {
@@ -456,7 +462,19 @@ static void send_cb(int status, const char *body, void *ud){
     free(f);
 }
 
-static void send_message(main_ctx *L, uint64_t chan, const char *content){
+static void reply_text_copy(char *dst, size_t cap, const char *src){
+    size_t n = 0;
+    if(!dst || cap == 0) return;
+    while(src && *src && n + 1 < cap){
+        char c = *src++;
+        if(c == '\n' || c == '\r' || c == '\t') c = ' ';
+        dst[n++] = c;
+    }
+    dst[n] = 0;
+}
+
+static void send_message(main_ctx *L, uint64_t chan, const char *content,
+                         uint64_t reply_id, uint64_t reply_chan){
     static uint64_t seq;
     char payload[8192];
     char path[96];
@@ -465,7 +483,9 @@ static void send_message(main_ctx *L, uint64_t chan, const char *content){
     send_fetch *f;
     if(!content || !*content) return;
     nonce = (uint64_t)time(NULL) * 1000ULL + (seq++ % 1000);
-    if(composer_payload(content, nonce, payload, sizeof payload) < 0){
+    if((reply_id ? composer_payload_reply(content, nonce, reply_id, reply_chan,
+                                          payload, sizeof payload)
+                 : composer_payload(content, nonce, payload, sizeof payload)) < 0){
         log_msg("send: payload overflow");
         return;
     }
@@ -479,6 +499,14 @@ static void send_message(main_ctx *L, uint64_t chan, const char *content){
         snprintf(pm.author_name, sizeof pm.author_name, "%s",
                  gw_self_name(L->app->gw));
     snprintf(pm.content, sizeof pm.content, "%s", content);
+    if(reply_id){
+        const message *orig = store_message(L->app->st, reply_chan, reply_id);
+        pm.reply_to = reply_id;
+        if(orig){
+            snprintf(pm.reply_name, sizeof pm.reply_name, "%s", orig->author_name);
+            reply_text_copy(pm.reply_text, sizeof pm.reply_text, orig->content);
+        }
+    }
     pm.pending = 1;
     pm.nonce = nonce;
     store_put_message(L->app->st, &pm);
@@ -500,6 +528,65 @@ static void send_message(main_ctx *L, uint64_t chan, const char *content){
         return;
     }
     set_status(L, "Sending...");
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan, id;
+    int del;
+} msg_op;
+
+static void msg_op_cb(int status, const char *body, void *ud){
+    msg_op *f = ud;
+    main_ctx *L = f->ctx;
+    (void)body;
+    if(f->del ? (status == 200 || status == 204) : status == 200){
+        if(f->del) store_del_message(L->app->st, f->chan, f->id);
+        log_msg("rest: message %s ok", f->del ? "delete" : "edit");
+    } else {
+        log_msg("rest: message %s failed (%d)", f->del ? "delete" : "edit",
+                status);
+        set_status(L, f->del ? "Delete failed" : "Edit failed");
+    }
+    free(f);
+}
+
+static void edit_message(main_ctx *L, const message *m, const char *text){
+    char payload[4096];
+    char path[128];
+    msg_op *f;
+    if(composer_payload_edit(text, payload, sizeof payload) < 0) return;
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = m->chan;
+    f->id = m->id;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/messages/%llu",
+             (unsigned long long)m->chan, (unsigned long long)m->id);
+    if(rest_send(L->app->rest, "PATCH", path, payload, msg_op_cb, f) != 0){
+        free(f);
+        set_status(L, "Edit failed");
+        return;
+    }
+    set_status(L, "Editing...");
+}
+
+static void delete_message(main_ctx *L, const message *m){
+    char path[128];
+    msg_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = m->chan;
+    f->id = m->id;
+    f->del = 1;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/messages/%llu",
+             (unsigned long long)m->chan, (unsigned long long)m->id);
+    if(rest_send(L->app->rest, "DELETE", path, NULL, msg_op_cb, f) != 0){
+        free(f);
+        set_status(L, "Delete failed");
+        return;
+    }
+    set_status(L, "Deleting...");
 }
 
 static int measure_adapter(void *ud, const char *s, size_t len){
@@ -528,6 +615,69 @@ static void view_rebuild(main_ctx *L, uint64_t chan){
     if(L->stick) L->top_px = L->mv.height;
     scroll_clamp(L);
     L->last_rev = store_revision(L->app->st);
+}
+
+static void sel_into_view(main_ctx *L){
+    int i, top = -1, bottom = 0;
+    for(i = 0; i < L->mv.n; i++){
+        const mv_line *ln = &L->mv.lines[i];
+        int lh = ln->att_h > 0 ? ln->att_h : MV_LINE_H;
+        if(ln->m->id != L->sel_id) continue;
+        if(top < 0 || ln->y < top) top = ln->y;
+        if(ln->y + lh > bottom) bottom = ln->y + lh;
+    }
+    if(top < 0) return;
+    L->stick = 0;
+    if(top < L->top_px) L->top_px = top;
+    if(bottom > L->top_px + CHAT_VIEW_H) L->top_px = bottom - CHAT_VIEW_H;
+    scroll_clamp(L);
+}
+
+static void sel_begin(main_ctx *L, uint64_t chan){
+    const message *m = store_newest_message(L->app->st, chan);
+    if(!m) return;
+    L->sel = 1;
+    L->sel_id = m->id;
+    sel_into_view(L);
+}
+
+static const char *menu_label(int item){
+    switch(item){
+    case 1: return "Reply";
+    case 2: return "Edit";
+    case 3: return "Delete";
+    default: return "Cancel";
+    }
+}
+
+static void menu_open(main_ctx *L, const message *m){
+    int own = m->author_id && m->author_id == gw_self_id(L->app->gw) &&
+              !m->pending;
+    L->menu_n = 0;
+    L->menu_items[L->menu_n++] = 1;
+    if(own){
+        L->menu_items[L->menu_n++] = 2;
+        L->menu_items[L->menu_n++] = 3;
+    }
+    L->menu_items[L->menu_n++] = 0;
+    L->menu_i = 0;
+    L->menu = 1;
+}
+
+static void menu_choose(main_ctx *L, const message *m, int item){
+    char text[1024], title[96];
+    if(item == 1){
+        snprintf(title, sizeof title, "Reply to @%s", m->author_name);
+        memset(text, 0, sizeof text);
+        if(ime_prompt(title, "", text, sizeof text))
+            send_message(L, m->chan, text, m->id, m->chan);
+    } else if(item == 2){
+        snprintf(text, sizeof text, "%s", m->content);
+        if(ime_prompt("Edit message", "", text, sizeof text) && text[0])
+            edit_message(L, m, text);
+    } else if(item == 3){
+        delete_message(L, m);
+    }
 }
 
 static void gw_drop(main_ctx *L, uint64_t now, const char *why){
@@ -634,6 +784,10 @@ static void draw_messages(main_ctx *L){
         if(!ln->is_sep && ln->m->mentions_me){
             ui_rect(CHAT_X, y, CHAT_W, lh, 0x2AFAA61Au);
             ui_rect(CHAT_X, y, 2, lh, 0xFAA61Au);
+        }
+        if(!ln->is_sep && L->sel && ln->m->id == L->sel_id){
+            ui_rect(CHAT_X, y, CHAT_W, lh, 0x335865F2u);
+            ui_rect(CHAT_X, y, 3, lh, UI_BLURPLE);
         }
         if(ln->is_sep){
             char d[48];
@@ -775,6 +929,20 @@ static void draw_viewer(main_ctx *L){
     snprintf(cap, sizeof cap, "%d / %d   UP/DOWN browse   CROSS close",
              L->view_i + 1, L->view_n);
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
+}
+
+static void draw_menu(main_ctx *L){
+    int w = 320, item_h = 40, h = 52 + L->menu_n * item_h;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 16, y + 14, "Message actions", UI_TEXT, 16);
+    for(i = 0; i < L->menu_n; i++){
+        int iy = y + 44 + i * item_h;
+        if(i == L->menu_i) ui_rrect(x + 8, iy, w - 16, item_h - 6, 6,
+                                    UI_BLURPLE);
+        ui_text(x + 20, iy + 6, menu_label(L->menu_items[i]), UI_TEXT, 16);
+    }
 }
 
 static void draw_main(main_ctx *L, const frame_view *v){
@@ -1064,12 +1232,49 @@ int screen_main_run(app_state *st){
             for(i = 0; i < ne; i++){
                 input_event e = evs[i];
                 if(L.viewer){
-                    if(e == IE_VIEW || e == IE_SELECT || e == IE_BACK)
+                    if(e == IE_VIEW || e == IE_SELECT || e == IE_BACK ||
+                       e == IE_MENU)
                         L.viewer = 0;
                     else if(e == IE_UP && L.view_i > 0)
                         L.view_i--;
                     else if(e == IE_DOWN && L.view_i + 1 < L.view_n)
                         L.view_i++;
+                    continue;
+                }
+                if(L.menu){
+                    if(e == IE_UP || e == IE_DOWN){
+                        L.menu_i += e == IE_UP ? -1 : 1;
+                        if(L.menu_i < 0) L.menu_i = L.menu_n - 1;
+                        if(L.menu_i >= L.menu_n) L.menu_i = 0;
+                    } else if(e == IE_SELECT){
+                        const message *m = store_message(
+                            L.app->st, L.chan_loaded, L.sel_id);
+                        int item = L.menu_items[L.menu_i];
+                        L.menu = 0;
+                        L.sel = 0;
+                        if(m) menu_choose(&L, m, item);
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.menu = 0;
+                        L.sel = 0;
+                    }
+                    continue;
+                }
+                if(L.sel){
+                    if(e == IE_UP || e == IE_DOWN){
+                        const message *m = store_message_step(
+                            L.app->st, L.chan_loaded, L.sel_id,
+                            e == IE_UP ? -1 : 1);
+                        if(m){
+                            L.sel_id = m->id;
+                            sel_into_view(&L);
+                        }
+                    } else if(e == IE_SELECT){
+                        const message *m = store_message(
+                            L.app->st, L.chan_loaded, L.sel_id);
+                        if(m) menu_open(&L, m);
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.sel = 0;
+                    }
                     continue;
                 }
                 if(e == IE_LEFT){
@@ -1117,11 +1322,14 @@ int screen_main_run(app_state *st){
                                  (unsigned long long)v.active->id);
                         rest_send(st->rest, "POST", tpath, NULL, NULL, NULL);
                         if(ime_prompt("Message", v.active->name, text, sizeof text))
-                            send_message(&L, v.active->id, text);
+                            send_message(&L, v.active->id, text, 0, 0);
                     }
                 } else if(e == IE_VIEW){
                     if(L.focus == 2 && v.active)
                         open_viewer(&L, v.active->id);
+                } else if(e == IE_MENU){
+                    if(L.focus == 2 && v.active)
+                        sel_begin(&L, v.active->id);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1131,6 +1339,7 @@ int screen_main_run(app_state *st){
         ui_frame_begin();
         draw_main(&L, &v);
         if(L.viewer) draw_viewer(&L);
+        if(L.menu) draw_menu(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

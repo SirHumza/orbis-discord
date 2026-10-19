@@ -1,7 +1,8 @@
 #include "composer.h"
 #include <stdio.h>
 
-int composer_payload(const char *content, uint64_t nonce, char *out, size_t cap){
+static int payload_build(const char *content, uint64_t nonce, uint64_t reply_id,
+                         uint64_t reply_chan, int edit, char *out, size_t cap){
     size_t n = 0;
     const unsigned char *s;
     if(!out || cap == 0) return -1;
@@ -31,9 +32,20 @@ int composer_payload(const char *content, uint64_t nonce, char *out, size_t cap)
             PUT((char)c);
         }
     }
-    {
-        char tail[48];
-        snprintf(tail, sizeof tail, "\",\"nonce\":\"%llu\"}", (unsigned long long)nonce);
+    if(edit){
+        PUT('"'); PUT('}');
+    } else {
+        char tail[192];
+        if(reply_id)
+            snprintf(tail, sizeof tail,
+                     "\",\"nonce\":\"%llu\",\"message_reference\":{"
+                     "\"message_id\":\"%llu\",\"channel_id\":\"%llu\","
+                     "\"fail_if_not_exists\":false}}",
+                     (unsigned long long)nonce, (unsigned long long)reply_id,
+                     (unsigned long long)reply_chan);
+        else
+            snprintf(tail, sizeof tail, "\",\"nonce\":\"%llu\"}",
+                     (unsigned long long)nonce);
         {
             const char *p = tail;
             while(*p) PUT(*p++);
@@ -41,4 +53,17 @@ int composer_payload(const char *content, uint64_t nonce, char *out, size_t cap)
     }
     #undef PUT
     return (int)n;
+}
+
+int composer_payload(const char *content, uint64_t nonce, char *out, size_t cap){
+    return payload_build(content, nonce, 0, 0, 0, out, cap);
+}
+
+int composer_payload_reply(const char *content, uint64_t nonce, uint64_t reply_id,
+                           uint64_t reply_chan, char *out, size_t cap){
+    return payload_build(content, nonce, reply_id, reply_chan, 0, out, cap);
+}
+
+int composer_payload_edit(const char *content, char *out, size_t cap){
+    return payload_build(content, 0, 0, 0, 1, out, cap);
 }
