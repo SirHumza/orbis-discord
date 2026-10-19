@@ -297,3 +297,22 @@ int overwrites_from_json(jl_val_t *arr, channel *ch){
     ch->now = n;
     return n;
 }
+
+int invites_from_json(jl_val_t *arr, invite_item *out, int cap){
+    int n = 0, i;
+    if(!arr || arr->type != JL_ARRAY || !out || cap <= 0) return 0;
+    for(i = 0; i < arr->count && n < cap; i++){
+        jl_val_t *o = jl_arr_at(arr, i);
+        const char *code;
+        if(!o || o->type != JL_OBJECT) continue;
+        code = jstr(field(o, "code"));
+        if(!code[0]) continue;
+        memset(&out[n], 0, sizeof out[n]);
+        snprintf(out[n].code, sizeof out[n].code, "%s", code);
+        out[n].uses = jint(field(o, "uses"));
+        out[n].max_uses = jint(field(o, "max_uses"));
+        out[n].max_age = jint(field(o, "max_age"));
+        n++;
+    }
+    return n;
+}

@@ -116,6 +116,11 @@ typedef struct {
     char avatar[128];
 } recip_item;
 
+typedef struct {
+    char code[24];
+    int uses, max_uses, max_age;
+} invite_item;
+
 typedef struct store store;
 
 store *store_new(void);

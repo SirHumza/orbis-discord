@@ -157,6 +157,12 @@ typedef struct {
     int gview_i;
     uint64_t gview_chan;
     recip_item gview_list[32];
+    int iview;
+    int iview_pending;
+    int iview_n;
+    int iview_i;
+    uint64_t iview_chan;
+    invite_item iview_list[16];
     uint64_t badge_rev;
     uint64_t badge_last_read;
     int badge_n;
@@ -870,6 +876,103 @@ static void gview_add(main_ctx *L, uint64_t chan, uint64_t user){
              (unsigned long long)chan, (unsigned long long)user);
     if(rest_send(L->app->rest, "PUT", path, NULL, gview_add_cb, L) != 0)
         set_status(L, "Add failed");
+}
+
+static void iview_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v = (status == 200 && body) ? jl_parse(body, strlen(body))
+                                          : NULL;
+    L->iview_pending = 0;
+    L->iview_n = 0;
+    if(v && v->type == JL_ARRAY)
+        L->iview_n = invites_from_json(v, L->iview_list, 16);
+    if(status != 200) set_status(L, "Invites failed");
+    if(L->iview_i >= L->iview_n) L->iview_i = L->iview_n > 0
+                                                  ? L->iview_n - 1 : 0;
+    jl_free(v);
+    free(f);
+}
+
+static void iview_fetch(main_ctx *L, uint64_t chan){
+    char path[128];
+    gview_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    L->iview_pending = 1;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/invites",
+             (unsigned long long)chan);
+    if(rest_send(L->app->rest, "GET", path, NULL, iview_cb, f) != 0){
+        L->iview_pending = 0;
+        free(f);
+        set_status(L, "Invites failed");
+    }
+}
+
+static void iview_open(main_ctx *L, uint64_t chan){
+    L->iview = 1;
+    L->iview_i = 0;
+    L->iview_n = 0;
+    L->iview_chan = chan;
+    iview_fetch(L, chan);
+}
+
+static void iview_create_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    (void)body;
+    if(status == 200 || status == 201){
+        set_status(L, "Invite created");
+        iview_fetch(L, f->chan);
+    } else {
+        set_status(L, "Invite failed");
+    }
+    free(f);
+}
+
+static void iview_create(main_ctx *L, uint64_t chan){
+    char path[128];
+    gview_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/invites",
+             (unsigned long long)chan);
+    if(rest_send(L->app->rest, "POST", path,
+                 "{\"max_age\":86400,\"max_uses\":0}",
+                 iview_create_cb, f) != 0){
+        free(f);
+        set_status(L, "Invite failed");
+        return;
+    }
+    set_status(L, "Creating invite...");
+}
+
+static void iview_revoke_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    (void)body;
+    if(status == 200 || status == 204){
+        set_status(L, "Invite revoked");
+        iview_fetch(L, f->chan);
+    } else {
+        set_status(L, "Revoke failed");
+    }
+    free(f);
+}
+
+static void iview_revoke(main_ctx *L, uint64_t chan, const char *code){
+    char path[128];
+    gview_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    snprintf(path, sizeof path, "/api/v9/invites/%s", code);
+    if(rest_send(L->app->rest, "DELETE", path, NULL, iview_revoke_cb, f) != 0){
+        free(f);
+        set_status(L, "Revoke failed");
+    }
 }
 
 typedef struct {
@@ -2000,6 +2103,41 @@ static void draw_gview(main_ctx *L){
             UI_TEXT_DIM, 12);
 }
 
+static void draw_iview(main_ctx *L){
+    int w = 640, h = 480;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Channel invites", UI_TEXT, 18);
+    if(L->iview_pending){
+        ui_text(x + 20, y + 60, "Loading invites...", UI_TEXT_DIM, 16);
+    } else if(L->iview_n == 0){
+        ui_text(x + 20, y + 60, "No active invites", UI_TEXT_DIM, 16);
+    } else {
+        first = L->iview_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->iview_n - 9) first = L->iview_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->iview_n && i < first + 9; i++){
+            const invite_item *iv = &L->iview_list[i];
+            char sub[64];
+            int ry = y + 56 + (i - first) * 44;
+            if(i == L->iview_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 38, 6, UI_BLURPLE);
+            if(iv->max_uses)
+                snprintf(sub, sizeof sub, "uses %d/%d", iv->uses,
+                         iv->max_uses);
+            else
+                snprintf(sub, sizeof sub, "uses %d", iv->uses);
+            ui_text(x + 24, ry, iv->code, UI_TEXT, 16);
+            ui_text(x + 24, ry + 18, sub, UI_TEXT_DIM, 12);
+        }
+    }
+    ui_text(x + 20, y + h - 30,
+            "CROSS revoke   SQUARE create   CIRCLE close",
+            UI_TEXT_DIM, 12);
+}
+
 static void draw_search(main_ctx *L){
     int w = 760, h = 560;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
@@ -2682,6 +2820,26 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.iview){
+                    if(e == IE_UP && L.iview_i > 0){
+                        L.iview_i--;
+                    } else if(e == IE_DOWN && L.iview_i + 1 < L.iview_n){
+                        L.iview_i++;
+                    } else if(e == IE_SELECT && L.iview_n > 0){
+                        iview_revoke(&L, L.iview_chan,
+                                     L.iview_list[L.iview_i].code);
+                    } else if(e == IE_MENU){
+                        const channel *ic =
+                            store_channel(L.app->st, L.iview_chan);
+                        if(perm_can(chan_perms(&L, ic), PERM_CREATE_INVITE))
+                            iview_create(&L, L.iview_chan);
+                        else
+                            set_status(&L, "No permission to invite");
+                    } else if(e == IE_BACK || e == IE_VIEW){
+                        L.iview = 0;
+                    }
+                    continue;
+                }
                 if(L.profile){
                     if(e == IE_SELECT || e == IE_BACK || e == IE_MENU){
                         L.profile = 0;
@@ -2798,6 +2956,8 @@ int screen_main_run(app_state *st){
                         sel_begin(&L, v.active->id);
                     else if(L.focus == 1 && v.active && v.active->type == 3)
                         group_rename(&L, v.active);
+                    else if(L.focus == 1 && v.active && v.active->type == 0)
+                        iview_open(&L, v.active->id);
                 } else if(e == IE_PINS){
                     if(L.focus == 2 && v.active)
                         pins_open(&L, v.active->id);
@@ -2825,6 +2985,7 @@ int screen_main_run(app_state *st){
         if(L.pins) draw_pins(&L);
         if(L.search) draw_search(&L);
         if(L.gview) draw_gview(&L);
+        if(L.iview) draw_iview(&L);
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
         if(L.profile) draw_profile(&L);

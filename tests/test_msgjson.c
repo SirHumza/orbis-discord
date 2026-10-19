@@ -276,6 +276,26 @@ TEST(test_msgjson_overwrites){
     jl_free(v);
 }
 
+TEST(test_msgjson_invites){
+    const char *json =
+        "[{\"code\":\"abc123\",\"uses\":2,\"max_uses\":10,\"max_age\":86400},"
+        "{\"code\":\"xyz\",\"uses\":0,\"max_uses\":0},"
+        "{\"uses\":1}]";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    invite_item iv[4];
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(invites_from_json(v, iv, 4), 2);
+    ASSERT_EQ_STR(iv[0].code, "abc123");
+    ASSERT_EQ_INT(iv[0].uses, 2);
+    ASSERT_EQ_INT(iv[0].max_uses, 10);
+    ASSERT_EQ_INT(iv[0].max_age, 86400);
+    ASSERT_EQ_STR(iv[1].code, "xyz");
+    ASSERT_EQ_INT(iv[1].max_uses, 0);
+    ASSERT_EQ_INT(invites_from_json(NULL, iv, 4), 0);
+    ASSERT_EQ_INT(invites_from_json(v, NULL, 4), 0);
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
@@ -292,4 +312,5 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_recipients();
     g_tests_run++; test_msgjson_recipients_invalid();
     g_tests_run++; test_msgjson_overwrites();
+    g_tests_run++; test_msgjson_invites();
 }

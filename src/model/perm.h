@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "store.h"
 
+#define PERM_CREATE_INVITE (1ull << 0)
 #define PERM_ADMINISTRATOR (1ull << 3)
 #define PERM_VIEW_CHANNEL  (1ull << 10)
 #define PERM_SEND_MESSAGES (1ull << 11)

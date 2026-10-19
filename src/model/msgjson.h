@@ -7,6 +7,7 @@ int msg_from_json(message *m, jl_val_t *o);
 int emoji_from_json(emoji_item *e, jl_val_t *o);
 int recipients_from_json(jl_val_t *arr, recip_item *out, int cap);
 int overwrites_from_json(jl_val_t *arr, channel *ch);
+int invites_from_json(jl_val_t *arr, invite_item *out, int cap);
 void msg_resolve_mentions(store *st, message *m, uint64_t self_id);
 
 #endif
