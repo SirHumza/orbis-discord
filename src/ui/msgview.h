@@ -12,6 +12,8 @@
 #define MV_GROUP_GAP 8
 #define MV_MAX_LINES 2048
 #define MV_MEASURE_MAX 2048
+#define MV_ATT_MAX_W 400
+#define MV_ATT_MAX_H 260
 
 /* width in px of s[0..len) */
 typedef int (*mv_measure_fn)(void *ud, const char *s, size_t len);
@@ -23,6 +25,8 @@ typedef struct {
     int off;            /* byte offset into m->content */
     int len;            /* byte length of this content segment */
     int y;              /* absolute top y inside the content */
+    int att;            /* attachment index, -1 for text rows */
+    int att_w, att_h;   /* thumbnail box for image attachments */
 } mv_line;
 
 typedef struct {

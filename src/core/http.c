@@ -13,7 +13,11 @@ http *http_new(http_io io){
     return h;
 }
 
-void http_free(http *h){ free(h); }
+void http_free(http *h){
+    if(!h) return;
+    if(h->io.close) h->io.close(h->io.ctx);
+    free(h);
+}
 
 void http_resp_free(http_resp *r){
     if(!r) return;
@@ -128,21 +132,39 @@ int http_request(http *h, const char *host, const char *method, const char *path
             "Content-Length: %zu\r\nConnection: close\r\n\r\n",
             method, path, host, blen);
     if(n <= 0 || (size_t)n >= sizeof hdr) return -2;
-    if(h->io.write(h->io.ctx, hdr, (size_t)n) < 0) return -3;
-    if(blen && h->io.write(h->io.ctx, body, blen) < 0) return -3;
+    if(h->io.write(h->io.ctx, hdr, (size_t)n) < 0){
+        if(h->io.close) h->io.close(h->io.ctx);
+        return -3;
+    }
+    if(blen && h->io.write(h->io.ctx, body, blen) < 0){
+        if(h->io.close) h->io.close(h->io.ctx);
+        return -3;
+    }
 
     resp = malloc(cap);
-    if(!resp) return -4;
+    if(!resp){
+        if(h->io.close) h->io.close(h->io.ctx);
+        return -4;
+    }
     while((r = h->io.read(h->io.ctx, resp + len, cap - len - 1)) > 0){
         len += (size_t)r;
         if(len + 1 >= cap){
-            if(cap >= HTTP_RESP_MAX) { free(resp); return -5; }
+            if(cap >= HTTP_RESP_MAX){
+                if(h->io.close) h->io.close(h->io.ctx);
+                free(resp);
+                return -5;
+            }
             cap *= 2;
             char *p = realloc(resp, cap);
-            if(!p){ free(resp); return -4; }
+            if(!p){
+                if(h->io.close) h->io.close(h->io.ctx);
+                free(resp);
+                return -4;
+            }
             resp = p;
         }
     }
+    if(h->io.close) h->io.close(h->io.ctx);
     resp[len] = 0;
     end = find_hdr_end(resp, len);
     if(!end){ free(resp); return -6; }

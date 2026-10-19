@@ -3,6 +3,15 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define MSG_MAX_ATT 4
+
+typedef struct {
+    char url[320];
+    char name[96];
+    int w, h, size;
+    int image;
+} attachment;
+
 typedef struct message {
     uint64_t id, chan, author_id;
     char author_name[64];
@@ -12,6 +21,8 @@ typedef struct message {
     int is_grouped;
     int pending;
     uint64_t nonce;
+    attachment att[MSG_MAX_ATT];
+    int natt;
     struct message *next;
 } message;
 

@@ -111,6 +111,26 @@ TEST(test_msgview_height_accounts_for_separator_and_gap){
     mv_free(&L);
 }
 
+TEST(test_msgview_attachment_rows){
+    message a = mkmsg(1500000000000ULL, 1, 7, "look", 0);
+    mv_layout L;
+    a.natt = 2;
+    snprintf(a.att[0].url, sizeof a.att[0].url, "https://cdn.discordapp.com/x.png");
+    a.att[0].image = 1;
+    a.att[0].w = 800;
+    a.att[0].h = 600;
+    snprintf(a.att[1].name, sizeof a.att[1].name, "file.zip");
+    mv_init(&L);
+    ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 5);
+    ASSERT_EQ_INT(L.lines[3].att, 0);
+    ASSERT_EQ_INT(L.lines[3].att_w, 346);
+    ASSERT_EQ_INT(L.lines[3].att_h, 260);
+    ASSERT_EQ_INT(L.lines[4].att, 1);
+    ASSERT_EQ_INT(L.lines[4].att_h, MV_LINE_H);
+    ASSERT_EQ_INT(L.height, 34 + 22 + 22 + 260 + 6 + 22 + 2 + 8);
+    mv_free(&L);
+}
+
 TEST(test_msgview_time_and_day_strings){
     char buf[64];
     mv_time_str(1420070400000ULL, buf, sizeof buf);
@@ -132,5 +152,6 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_grouping_skips_author_row();
     g_tests_run++; test_msgview_day_separator();
     g_tests_run++; test_msgview_height_accounts_for_separator_and_gap();
+    g_tests_run++; test_msgview_attachment_rows();
     g_tests_run++; test_msgview_time_and_day_strings();
 }

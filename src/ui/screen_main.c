@@ -17,7 +17,9 @@
 #include "../core/jsonlite.h"
 #include "../core/clock.h"
 #include "../core/log.h"
+#include "../model/msgjson.h"
 #include "../model/snowflake.h"
+#include "../image.h"
 #include "../platform/input.h"
 #include "../platform/ime.h"
 #include <stdint.h>
@@ -346,27 +348,9 @@ static void fetch_members(main_ctx *L, uint64_t guild_id){
     }
 }
 
-static void put_message_json(store *st, uint64_t chan, jl_val_t *o){
-    jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
-    jl_val_t *content = o ? jl_obj_get(o, "content") : NULL;
-    jl_val_t *author = o ? jl_obj_get(o, "author") : NULL;
-    jl_val_t *aid = author ? jl_obj_get(author, "id") : NULL;
-    jl_val_t *aname = author ? jl_obj_get(author, "username") : NULL;
-    jl_val_t *edited = o ? jl_obj_get(o, "edited_timestamp") : NULL;
+static void put_message_json(store *st, jl_val_t *o){
     message m;
-    if(!id || id->type != JL_STRING) return;
-    memset(&m, 0, sizeof m);
-    m.id = sn_parse(id->str);
-    m.chan = chan;
-    if(aid && aid->type == JL_STRING) m.author_id = sn_parse(aid->str);
-    if(aname && aname->type == JL_STRING)
-        snprintf(m.author_name, sizeof m.author_name, "%s", aname->str);
-    if(content && content->type == JL_STRING)
-        snprintf(m.content, sizeof m.content, "%s", content->str);
-    if(edited && edited->type == JL_STRING){
-        m.has_edit = 1;
-        m.edited_at = sn_parse(edited->str);
-    }
+    if(!msg_from_json(&m, o)) return;
     store_put_message(st, &m);
 }
 
@@ -385,7 +369,7 @@ static void messages_cb(int status, const char *body, void *ud){
     v = body ? jl_parse(body, strlen(body)) : NULL;
     if(v && v->type == JL_ARRAY){
         for(i = 0; i < v->count; i++)
-            put_message_json(L->app->st, f->chan, jl_arr_at(v, i));
+            put_message_json(L->app->st, jl_arr_at(v, i));
         if(f->older && v->count < 50) L->has_older = 0;
         if(!f->older) L->has_older = v->count >= 50;
         log_msg("rest: %d messages for %llu%s", v->count,
@@ -435,7 +419,7 @@ static void send_cb(int status, const char *body, void *ud){
     if(status == 200 && body){
         jl_val_t *v = jl_parse(body, strlen(body));
         if(v && v->type == JL_OBJECT)
-            put_message_json(L->app->st, f->chan, v);
+            put_message_json(L->app->st, v);
         jl_free(v);
         log_msg("rest: sent to %llu", (unsigned long long)f->chan);
     } else {
@@ -600,7 +584,8 @@ static void draw_messages(main_ctx *L){
     for(i = 0; i < L->mv.n; i++){
         const mv_line *ln = &L->mv.lines[i];
         int y = CHAT_Y0 + ln->y - L->top_px;
-        if(y + MV_LINE_H < CHAT_Y0) continue;
+        int lh = ln->att >= 0 && ln->att_h > 0 ? ln->att_h : MV_LINE_H;
+        if(y + lh < CHAT_Y0) continue;
         if(y > CHAT_Y0 + CHAT_VIEW_H) break;
         if(ln->is_sep){
             char d[48];
@@ -615,6 +600,14 @@ static void draw_messages(main_ctx *L){
                         half, 1, UI_SEP);
             }
             ui_text(CHAT_X + (CHAT_W - tw) / 2, y + 10, d, UI_TEXT_DIM, 12);
+        } else if(ln->att >= 0 && ln->att < ln->m->natt){
+            const attachment *a = &ln->m->att[ln->att];
+            char fb[128];
+            if(a->image && ui_img(a->url, CHAT_X + MSG_PAD, y,
+                                  ln->att_w, ln->att_h))
+                continue;
+            trunc_utf8(fb, sizeof fb, a->name[0] ? a->name : "attachment", 56);
+            ui_text(CHAT_X + MSG_PAD, y + 4, fb, UI_TEXT_LINK, 14);
         } else if(ln->author){
             char tbuf[8];
             int nw, tx;
@@ -902,6 +895,7 @@ int screen_main_run(app_state *st){
         }
 
         rest_pump(st->rest, now);
+        image_tick(now);
         view_build(&L, &v);
 
         if(L.chan_loaded && store_revision(st->st) != L.last_rev)

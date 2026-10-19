@@ -2,6 +2,7 @@
 #include "gateway.h"
 #include "snowflake.h"
 #include "store.h"
+#include "../model/msgjson.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -91,16 +92,7 @@ static int on_ready(gateway *g, jl_val_t *d){
 
 static int on_message_create(gateway *g, jl_val_t *d){
     message m;
-    jl_val_t *a = gw_obj(d, "author");
-    memset(&m, 0, sizeof m);
-    m.id = gw_u64(d, "id");
-    m.chan = gw_u64(d, "channel_id");
-    if(!m.id || !m.chan) return GW_EV_NONE;
-    m.author_id = gw_u64(a, "id");
-    cp(m.author_name, sizeof m.author_name, gw_string(a, "username"));
-    cp(m.content, sizeof m.content, gw_string(d, "content"));
-    jl_val_t *e = gw_obj(d, "edited_timestamp");
-    if(e && e->type == JL_STRING && e->str[0]){ m.has_edit = 1; }
+    if(!msg_from_json(&m, d)) return GW_EV_NONE;
     store_put_message(gw_store(g), &m);
     return GW_EV_MESSAGE;
 }
@@ -108,24 +100,18 @@ static int on_message_create(gateway *g, jl_val_t *d){
 static int on_message_update(gateway *g, jl_val_t *d){
     message m;
     const message *old;
-    jl_val_t *a = gw_obj(d, "author");
-    uint64_t chan = gw_u64(d, "channel_id");
-    memset(&m, 0, sizeof m);
-    m.id = gw_u64(d, "id");
-    m.chan = chan;
-    if(!m.id || !m.chan) return GW_EV_NONE;
-    old = store_messages(gw_store(g), chan);
+    if(!msg_from_json(&m, d)) return GW_EV_NONE;
+    old = store_messages(gw_store(g), m.chan);
     while(old && old->id != m.id) old = old->next;
     if(old){
-        m.author_id = old->author_id;
-        memcpy(m.author_name, old->author_name, sizeof m.author_name);
-    } else if(a){
-        m.author_id = gw_u64(a, "id");
-        cp(m.author_name, sizeof m.author_name, gw_string(a, "username"));
+        if(!m.author_id) m.author_id = old->author_id;
+        if(!m.author_name[0]) memcpy(m.author_name, old->author_name, sizeof m.author_name);
+        if(m.natt == 0){
+            m.natt = old->natt;
+            memcpy(m.att, old->att, sizeof m.att);
+        }
     }
-    cp(m.content, sizeof m.content, gw_string(d, "content"));
     m.has_edit = 1;
-    m.edited_at = 1;
     store_put_message(gw_store(g), &m);
     return GW_EV_MESSAGE;
 }

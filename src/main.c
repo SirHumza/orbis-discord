@@ -9,6 +9,7 @@
 #include "http_tls.h"
 #include "ui/renderer.h"
 #include "ui/screens.h"
+#include "platform/cdn.h"
 #include "platform/ime.h"
 #include "platform/token.h"
 #include <stdio.h>
@@ -34,6 +35,7 @@ int main(void){
     if(!app.rest){ log_msg("rest alloc fail"); return 1; }
     if(!ui_init()){ log_msg("ui init fail"); return 1; }
     ime_init();
+    cdn_init();
 
     for(;;){
         if(relogin || !token_load(app.token, sizeof app.token)){

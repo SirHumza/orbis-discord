@@ -21,6 +21,10 @@ static void io_reset(io_ctx *c){
     c->fd = -1;
 }
 
+static void io_close(void *p){
+    io_reset(p);
+}
+
 static int io_write(void *p, const char *buf, size_t len){
     io_ctx *c = p;
     if(!c->tls){
@@ -65,5 +69,6 @@ http *http_tls_new(const char *host, int port){
     io.read = io_read;
     io.write = io_write;
     io.ctx = c;
+    io.close = io_close;
     return http_new(io);
 }

@@ -42,7 +42,7 @@ static void cb_count(int status, const char *body, void *ud){
 TEST(test_http_get_headers_and_parse){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     http_resp r;
     ASSERT_EQ_INT(http_request(h, "discord.com", "GET", "/users/@me", NULL, "tok123", &r), 0);
@@ -59,7 +59,7 @@ TEST(test_http_get_headers_and_parse){
 TEST(test_http_post_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     http_resp r;
     ASSERT_EQ_INT(http_request(h, "discord.com", "POST", "/channels/1/messages", "{\"content\":\"hi\"}", "t", &r), 0);
@@ -74,7 +74,7 @@ TEST(test_rest_ratelimit){
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nX-RateLimit-Reset-After: 0.100\r\nContent-Length: 26\r\n\r\n{\"retry_after\": 0.1}";
     m.responses[1] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
     m.responses[2] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     rest *r = rest_new(h, "tok123");
     int calls = 0;
@@ -96,7 +96,7 @@ TEST(test_rest_ratelimit){
 TEST(test_http_omits_auth_when_token_empty){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     http_resp r;
     ASSERT_EQ_INT(http_request(h, "discord.com", "POST", "/api/v9/users/@me/remote-auth/login",
@@ -111,7 +111,7 @@ TEST(test_rest_get_messages_path){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n[{}]";
     m.responses[1] = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n[{}]";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     rest *r = rest_new(h, "t");
     ASSERT_TRUE(rest_get_messages(r, 123, 0, NULL, NULL) == 0);
@@ -130,7 +130,7 @@ TEST(test_rest_post_message_utf8_bytes){
     const char *body_json = "{\"content\":\"ok \xF0\x9F\x98\x80\",\"nonce\":\"5\"}";
     int calls = 0;
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     rest *r = rest_new(h, "tok");
     ASSERT_TRUE(rest_send(r, "POST", "/api/v9/channels/42/messages", body_json,
@@ -153,7 +153,7 @@ TEST(test_rest_members_and_dms_paths){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]";
     m.responses[1] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     rest *r = rest_new(h, "t");
     ASSERT_TRUE(rest_get_guild_members(r, 77, NULL, NULL) == 0);
@@ -170,7 +170,7 @@ TEST(test_rest_members_and_dms_paths){
 TEST(test_http_lowercase_content_length){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     http_resp r;
     ASSERT_EQ_INT(http_request(h, "discord.com", "GET", "/x", NULL, "t", &r), 0);
@@ -183,7 +183,7 @@ TEST(test_http_chunked_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n"
                      "4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     http_resp r;
     ASSERT_EQ_INT(http_request(h, "discord.com", "GET", "/x", NULL, "t", &r), 0);
@@ -196,7 +196,7 @@ TEST(test_http_chunked_body){
 TEST(test_rest_retry_after_from_json_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{\"retry_after\":0.5}";
-    http_io io = {mread, mwrite, &m};
+    http_io io = {mread, mwrite, &m, NULL};
     http *h = http_new(io);
     rest *r = rest_new(h, "t");
     int calls = 0;

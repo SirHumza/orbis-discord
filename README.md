@@ -21,6 +21,7 @@ rest of the feature set are the next milestones.
 | Guild + channel list (REST bootstrap), pad navigation with hold-repeat | Done | host tests, PS4 elf |
 | SDL2 renderer, Roboto + NotoEmoji embedded, Discord palette | Done | host tests, PS4 elf |
 | PNG/JPEG/GIF decode, LRU cache, save to `/data/orbis-discord/downloads` | Done | host tests |
+| Message attachments: image/GIF thumbnails and file rows, CDN fetch wired | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -37,7 +38,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (110 checks) + fixtures
+tests/        host test suite (114 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -99,6 +100,10 @@ Phase 2, messaging parity:
 - Gateway frames above 64 KB are reduced to `op/s/t`; a rare oversized
   MESSAGE_CREATE is recovered by refetching history, not live.
 - Voice channels are listed but not joinable yet.
+- Attachments are fetched synchronously from the CDN on first draw, so a slow
+  or large image can stall the render loop (HTTP responses are capped at 4 MB).
+- Attachments are capped at 4 per message; embeds/link previews are not
+  rendered yet, and uploads are not implemented.
 - User-token clients are against Discord's terms; use at your own risk.
 
 ## Credits

@@ -6,6 +6,7 @@ typedef struct {
     int (*read)(void *ctx, char *buf, size_t cap);
     int (*write)(void *ctx, const char *buf, size_t len);
     void *ctx;
+    void (*close)(void *ctx);
 } http_io;
 
 typedef struct {

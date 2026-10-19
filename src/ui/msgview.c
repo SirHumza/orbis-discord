@@ -77,7 +77,18 @@ static int push_line(mv_layout *L, const message *m, int is_sep, int author,
     ln->off = off;
     ln->len = len;
     ln->y = y;
+    ln->att = -1;
+    ln->att_w = 0;
+    ln->att_h = 0;
     return 1;
+}
+
+static void push_att(mv_layout *L, const message *m, int att, int w, int h, int y){
+    int n = L->n;
+    if(!push_line(L, m, 0, 0, 0, 0, y)) return;
+    L->lines[n].att = att;
+    L->lines[n].att_w = w;
+    L->lines[n].att_h = h;
 }
 
 static size_t utf8_step(const char *s, size_t len){
@@ -151,6 +162,7 @@ int mv_build(mv_layout *L, const message *head, int width_px,
         uint64_t t = (uint64_t)((m->id >> 22) + 1420070400000ULL);
         uint64_t day = mv_day(t);
         int grouped = m->is_grouped;
+        int i;
         if(!have_day || day != prev_day){
             push_line(L, m, 1, 0, 0, 0, y);
             y += MV_SEP_H;
@@ -164,6 +176,24 @@ int mv_build(mv_layout *L, const message *head, int width_px,
         }
         y = wrap_content(L, m, m->content, strlen(m->content),
                          width_px, fn, ud, y);
+        for(i = 0; i < m->natt; i++){
+            const attachment *a = &m->att[i];
+            if(a->image && a->w > 0 && a->h > 0){
+                int tw = width_px < MV_ATT_MAX_W ? width_px : MV_ATT_MAX_W;
+                int th = tw * a->h / a->w;
+                if(th > MV_ATT_MAX_H){
+                    th = MV_ATT_MAX_H;
+                    tw = th * a->w / a->h;
+                }
+                if(tw < 24) tw = 24;
+                if(th < 24) th = 24;
+                push_att(L, m, i, tw, th, y);
+                y += th + 6;
+            } else {
+                push_att(L, m, i, 0, MV_LINE_H, y);
+                y += MV_LINE_H + 2;
+            }
+        }
         y += MV_GROUP_GAP;
     }
     L->height = y;

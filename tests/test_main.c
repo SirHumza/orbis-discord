@@ -6,6 +6,7 @@ int main(void){
     run_ws_streaming_tests();
     run_json_b64_tests();
     run_store_tests();
+    run_msgjson_tests();
     run_gateway_tests();
     run_rest_tests();
     run_remoteauth_tests();
