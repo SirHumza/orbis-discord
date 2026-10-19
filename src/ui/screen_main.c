@@ -160,6 +160,8 @@ typedef struct {
     uint64_t badge_last_read;
     int badge_n;
     guild_badge badges[64];
+    uint64_t cat_ids[16];
+    int cat_n;
     int pins;
     int pins_pending;
     int pins_loaded;
@@ -323,9 +325,11 @@ static void channels_cb(int status, const char *body, void *ud){
             jl_val_t *pos = o ? jl_obj_get(o, "position") : NULL;
             jl_val_t *name = o ? jl_obj_get(o, "name") : NULL;
             jl_val_t *nsfw = o ? jl_obj_get(o, "nsfw") : NULL;
+            jl_val_t *parent = o ? jl_obj_get(o, "parent_id") : NULL;
             channel ch;
             if(!id || id->type != JL_STRING) continue;
-            if(type && type->type == JL_NUMBER && (int)type->num != 0 && (int)type->num != 2)
+            if(type && type->type == JL_NUMBER && (int)type->num != 0 &&
+               (int)type->num != 2 && (int)type->num != 4)
                 continue;
             memset(&ch, 0, sizeof ch);
             ch.id = sn_parse(id->str);
@@ -335,6 +339,8 @@ static void channels_cb(int status, const char *body, void *ud){
             if(name && name->type == JL_STRING)
                 snprintf(ch.name, sizeof ch.name, "%s", name->str);
             if(nsfw && nsfw->type == JL_BOOL) ch.nsfw = (int)nsfw->num;
+            if(parent && parent->type == JL_STRING)
+                ch.parent = sn_parse(parent->str);
             store_put_channel(L->app->st, &ch);
         }
         log_msg("rest: %d channels for %llu", v->count,
@@ -1448,6 +1454,23 @@ static void gw_drop(main_ctx *L, uint64_t now, const char *why){
     log_msg("gw: dropped (%s)", why);
 }
 
+static int cat_collapsed(const main_ctx *L, uint64_t id){
+    int i;
+    for(i = 0; i < L->cat_n; i++)
+        if(L->cat_ids[i] == id) return 1;
+    return 0;
+}
+
+static void cat_toggle(main_ctx *L, uint64_t id){
+    int i;
+    for(i = 0; i < L->cat_n; i++)
+        if(L->cat_ids[i] == id){
+            L->cat_ids[i] = L->cat_ids[--L->cat_n];
+            return;
+        }
+    if(L->cat_n < 16) L->cat_ids[L->cat_n++] = id;
+}
+
 static void view_build(main_ctx *L, frame_view *v){
     uint64_t cids[64];
     size_t nc = 0, i;
@@ -1465,15 +1488,35 @@ static void view_build(main_ctx *L, frame_view *v){
         for(i = 0; i < nc && v->nt < 64; i++)
             v->text[v->nt++] = dms[i];
     } else if(v->ng > 0){
+        const channel *cats[16];
+        int ncats = 0, c;
+        int emitted[64];
+        memset(emitted, 0, sizeof emitted);
         nc = store_channels_for_guild(L->app->st, v->guilds[v->gi]->id, cids, 64);
+        for(i = 0; i < nc; i++){
+            const channel *c2 = store_channel(L->app->st, cids[i]);
+            if(c2 && c2->type == 4 && ncats < 16) cats[ncats++] = c2;
+        }
+        for(c = 0; c < ncats; c++){
+            if(v->nt < 64) v->text[v->nt++] = cats[c];
+            for(i = 0; i < nc && v->nt < 64; i++){
+                const channel *c2 = store_channel(L->app->st, cids[i]);
+                if(!c2 || c2->type != 0 || c2->parent != cats[c]->id) continue;
+                emitted[i] = 1;
+                if(!cat_collapsed(L, cats[c]->id)) v->text[v->nt++] = c2;
+            }
+        }
         for(i = 0; i < nc && v->nt < 64; i++){
-            const channel *c = store_channel(L->app->st, cids[i]);
-            if(c && c->type == 0) v->text[v->nt++] = c;
+            const channel *c2;
+            if(emitted[i]) continue;
+            c2 = store_channel(L->app->st, cids[i]);
+            if(c2 && c2->type == 0) v->text[v->nt++] = c2;
         }
     }
     nav_step(&L->cn, IE_NONE, v->nt);
     v->ci = nav_index(&L->cn);
-    if(v->nt > 0) v->active = v->text[v->ci];
+    if(v->nt > 0 && v->text[v->ci]->type != 4)
+        v->active = v->text[v->ci];
 }
 
 static void badges_refresh(main_ctx *L){
@@ -2193,6 +2236,18 @@ static void draw_main(main_ctx *L, const frame_view *v){
         int sel = i == v->ci;
         int tx = RAIL_W + 20;
         y = CHAN_TOP + (i - first) * CHAN_ROW_H;
+        if(v->text[i]->type == 4){
+            char cname[80], hbuf[96];
+            int collapsed = cat_collapsed(L, v->text[i]->id);
+            if(sel)
+                ui_rrect(RAIL_W + 8, y, CHAN_W - 16, CHAN_ROW_H - 4, 4,
+                         UI_SEP);
+            trunc_utf8(cname, sizeof cname, v->text[i]->name, 20);
+            snprintf(hbuf, sizeof hbuf, "%s %s", collapsed ? ">" : "v",
+                     cname);
+            ui_text(RAIL_W + 16, y + 8, hbuf, UI_TEXT_DIM, 13);
+            continue;
+        }
         if(sel) ui_rrect(RAIL_W + 8, y, CHAN_W - 16, CHAN_ROW_H - 4, 4, UI_SEP);
         if(v->text[i]->avatar_url[0] &&
            ui_img(v->text[i]->avatar_url, RAIL_W + 16, y + 3, 24, 24))
@@ -2696,6 +2751,9 @@ int screen_main_run(app_state *st){
                         rest_send(st->rest, "POST", tpath, NULL, NULL, NULL);
                         if(ime_prompt("Message", v.active->name, text, sizeof text))
                             send_message(&L, v.active->id, text, 0, 0);
+                    } else if(L.focus == 1 && v.nt > 0 &&
+                              v.text[v.ci]->type == 4){
+                        cat_toggle(&L, v.text[v.ci]->id);
                     }
                 } else if(e == IE_VIEW){
                     if(L.focus == 2 && v.active)

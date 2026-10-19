@@ -226,6 +226,7 @@ static int on_channel_put(gateway *g, jl_val_t *d){
     ch.guild = gw_u64(d, "guild_id");
     ch.type = gw_num(d, "type");
     ch.position = gw_num(d, "position");
+    ch.parent = gw_u64(d, "parent_id");
     cp(ch.name, sizeof ch.name, gw_string(d, "name"));
     if(!ch.name[0] || !ch.guild){
         old = store_channel(gw_store(g), ch.id);

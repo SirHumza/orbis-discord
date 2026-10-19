@@ -70,6 +70,7 @@ typedef struct channel {
     char avatar_url[128];
     int nsfw, position;
     uint64_t last_read;
+    uint64_t parent;
 } channel;
 
 typedef struct guild {

@@ -45,6 +45,7 @@ rest of the feature set are the next milestones.
 | Guild rail badges: unread dot, mention-count pill per guild | Done | host tests, PS4 elf |
 | Notification sounds: distinct message/mention tones via SDL audio | Done | host tests, PS4 elf |
 | Role hoisting: member list grouped by hoisted role, colored headers | Done | host tests, PS4 elf |
+| Channel categories: header rows group channels, CROSS collapses a category | Done | PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -126,7 +127,8 @@ Phase 2, messaging parity:
 - [x] DM list (REST), friends overlay (OPTIONS) with open/create DM
 - [x] Group DM creation (friends multi-select), rename, member add/remove
 - [x] Presence control (L3 picker, gateway op 3)
-- [ ] Threads, forums, invites, channel categories, permissions
+- [x] Channel categories (grouped channel list, CROSS collapse)
+- [ ] Threads, forums, invites, permissions
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback
 - [ ] Mic capture (sceAudioIn) and input device selection
