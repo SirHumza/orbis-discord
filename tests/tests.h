@@ -18,5 +18,6 @@ void run_store_tests(void);
 void run_gateway_tests(void);
 void run_rest_tests(void);
 void run_remoteauth_tests(void);
+void run_gateway_loop_tests(void);
 
 #endif

@@ -17,6 +17,9 @@ struct gateway {
     int interval_ms;
     uint64_t last_beat_ms;
     int awaiting_ack;
+    int reconnect_attempts;
+    uint64_t reconnect_at;
+    int reconnect_pending;
     char ack_buf[64];
 };
 
@@ -144,6 +147,44 @@ const char *gw_ack(gateway *g, size_t *len){
 }
 
 int gw_expired_heartbeat(gateway *g){ return g ? g->awaiting_ack : 0; }
+
+uint64_t gw_backoff_ms(int attempt){
+    uint64_t ms;
+    if(attempt <= 0) return 0;
+    ms = 1000ULL << (attempt - 1);
+    return ms > 30000ULL ? 30000ULL : ms;
+}
+
+void gw_schedule_reconnect(gateway *g, uint64_t now_ms){
+    if(!g) return;
+    g->reconnect_at = now_ms + gw_backoff_ms(g->reconnect_attempts);
+    g->reconnect_pending = 1;
+}
+
+int gw_reconnect_due(gateway *g, uint64_t now_ms){
+    if(!g || !g->reconnect_pending) return 0;
+    return now_ms >= g->reconnect_at;
+}
+
+void gw_on_reconnect_failed(gateway *g, uint64_t now_ms){
+    if(!g) return;
+    g->reconnect_attempts++;
+    g->reconnect_at = now_ms + gw_backoff_ms(g->reconnect_attempts);
+    g->reconnect_pending = 1;
+}
+
+void gw_on_reconnected(gateway *g){
+    if(!g) return;
+    g->reconnect_attempts = 0;
+    g->reconnect_at = 0;
+    g->reconnect_pending = 0;
+    g->awaiting_ack = 0;
+}
+
+int gw_ack_expired(gateway *g, uint64_t now_ms){
+    if(!g || !g->awaiting_ack) return 0;
+    return now_ms - g->last_beat_ms >= (uint64_t)g->interval_ms;
+}
 int gw_heartbeat_due(gateway *g, uint64_t now_ms){
     if(!g) return 0;
     return now_ms - g->last_beat_ms >= (uint64_t)g->interval_ms;

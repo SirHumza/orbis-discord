@@ -29,6 +29,12 @@ int gw_interval_ms(gateway *);
 int gw_seq(gateway *);
 int gw_state(gateway *);
 void gw_force_resume(gateway *);
+uint64_t gw_backoff_ms(int attempt);
+void gw_schedule_reconnect(gateway *, uint64_t now_ms);
+int gw_reconnect_due(gateway *, uint64_t now_ms);
+void gw_on_reconnect_failed(gateway *, uint64_t now_ms);
+void gw_on_reconnected(gateway *);
+int gw_ack_expired(gateway *, uint64_t now_ms);
 void gw_on_ready(gateway *, const char *session_id, const char *name, uint64_t id);
 store *gw_store(gateway *);
 #endif
