@@ -35,20 +35,17 @@ CFLAGS="--target=$TARGET -fPIC -std=gnu11 -O2 -Wall -Wno-unused \
         -DMBEDTLS_NO_PLATFORM_ENTROPY -D__PS4__ \
         -Isrc/core -Isrc/model \
         -isystem $SDK/include -Ithird_party/mbedtls/include"
-LIBS="-lc -lkernel -lSceNet -lSceNetCtl -lSceSysmodule -lSceUserService -lSDL2"
+LIBS="-lc -lkernel -lSceNet -lSceNetCtl -lSceSysmodule -lSceUserService -lSDL2main -lSDL2"
 LDFLAGS="-m elf_x86_64 -pie --eh-frame-hdr -L$SDK/lib $LIBS $SDK/lib/crt1.o --script $SDK/link.x"
 export OO_PS4_TOOLCHAIN="$SDK"
 
-OUT="$ROOT/build"; mkdir -p "$OUT"
-APP_SRCS="main log compat b64 jsonlite gateway events http rest remoteauth tls ws"
-MODEL_SRCS="store snowflake"
-
+OUT="$ROOT/build"; rm -rf "$OUT"; mkdir -p "$OUT"
 echo "=== compiling app ==="
-for f in $APP_SRCS; do
-  "$CC" $CFLAGS -c -o "$OUT/app_$f.o" "src/core/$f.c" 2>/dev/null || "$CC" $CFLAGS -c -o "$OUT/app_$f.o" "src/$f.c" || fail "compile $f"
-done
-for f in $MODEL_SRCS; do
-  "$CC" $CFLAGS -c -o "$OUT/model_$f.o" "src/model/$f.c" || fail "compile model/$f"
+for f in src/*.c src/core/*.c src/model/*.c src/ui/*.c src/platform/*.c; do
+  [ -e "$f" ] || continue
+  case "$f" in *ws_skip.c|*ws_env.c) continue;; esac
+  o="$OUT/$(echo "$f" | sed 's|/|_|g; s|\.c$||').o"
+  "$CC" $CFLAGS -c -o "$o" "$f" || fail "compile $f"
 done
 
 echo "=== mbedtls ==="
