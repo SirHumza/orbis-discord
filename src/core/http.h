@@ -22,4 +22,7 @@ void http_free(http *);
 void http_resp_free(http_resp *);
 int http_request(http *, const char *host, const char *method, const char *path,
                  const char *body, const char *token, http_resp *out);
+int http_request_ex(http *, const char *host, const char *method,
+                    const char *path, const char *ctype, const char *body,
+                    size_t blen, const char *token, http_resp *out);
 #endif

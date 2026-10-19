@@ -9,7 +9,9 @@
 typedef struct {
     char method[8];
     char path[512];
+    char ctype[80];
     char *body;
+    size_t body_len;
     rest_cb cb;
     void *ud;
 } req;
@@ -63,6 +65,13 @@ int rest_path_encode(const char *in, char *out, size_t cap){
 
 int rest_send(rest *r, const char *method, const char *path, const char *body,
               rest_cb cb, void *ud){
+    return rest_send_ex(r, method, path, "application/json", body,
+                        body ? strlen(body) : 0, cb, ud);
+}
+
+int rest_send_ex(rest *r, const char *method, const char *path,
+                 const char *ctype, const char *body, size_t blen,
+                 rest_cb cb, void *ud){
     req *q;
     int next;
     if(!r || !method || !path) return -1;
@@ -71,7 +80,16 @@ int rest_send(rest *r, const char *method, const char *path, const char *body,
     q = &r->q[r->tail];
     snprintf(q->method, sizeof q->method, "%s", method);
     snprintf(q->path, sizeof q->path, "%s", path);
-    q->body = body ? strdup(body) : NULL;
+    snprintf(q->ctype, sizeof q->ctype, "%s",
+             ctype && *ctype ? ctype : "application/json");
+    q->body = NULL;
+    q->body_len = 0;
+    if(body && blen){
+        q->body = malloc(blen);
+        if(!q->body) return -3;
+        memcpy(q->body, body, blen);
+        q->body_len = blen;
+    }
     q->cb = cb;
     q->ud = ud;
     r->tail = next;
@@ -123,7 +141,8 @@ int rest_pump(rest *r, uint64_t now_ms){
         int rc;
         if(now_ms < r->blocked_until) break;
         q = &r->q[r->head];
-        rc = http_request(r->h, "discord.com", q->method, q->path, q->body, r->token, &resp);
+        rc = http_request_ex(r->h, "discord.com", q->method, q->path, q->ctype,
+                             q->body, q->body_len, r->token, &resp);
         processed++;
         free(q->body);
         q->body = NULL;

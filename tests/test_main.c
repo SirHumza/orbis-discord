@@ -21,6 +21,7 @@ int main(void){
     run_ime_utf8_tests();
     run_perm_tests();
     run_voice_tests();
+    run_multipart_tests();
     printf("%d checks, %d failed\n", g_tests_run, g_tests_failed);
     return g_tests_failed ? 1 : 0;
 }

@@ -19,12 +19,14 @@
 #include "../core/log.h"
 #include "../model/cdnurl.h"
 #include "../model/msgjson.h"
+#include "../model/multipart.h"
 #include "../model/perm.h"
 #include "../model/snowflake.h"
 #include "../model/tenor.h"
 #include "../model/voice.h"
 #include "../image.h"
 #include "../platform/input.h"
+#include "../platform/files.h"
 #include "../platform/ime.h"
 #include "../platform/sound.h"
 #include "../platform/tenor_net.h"
@@ -175,6 +177,11 @@ typedef struct {
     thread_item tview_list[16];
     uint64_t thread_chan;
     int thread_jump;
+    int upick;
+    int upick_i;
+    int upick_n;
+    uint64_t upick_chan;
+    char upick_names[32][FILE_NAME_MAX];
     int voice_state;
     ws_t vws;
     int vsock;
@@ -1200,6 +1207,93 @@ static void voice_handle(main_ctx *L, const char *json){
         }
     }
     jl_free(v);
+}
+
+#define UPLOAD_DIR "/data/orbis-discord/downloads"
+#define UPLOAD_MAX (8u * 1024u * 1024u)
+#define UPLOAD_BOUNDARY "----orbisDiscord0f3a"
+
+static const char *upload_ctype(const char *name){
+    const char *dot = strrchr(name, '.');
+    if(!dot) return "application/octet-stream";
+    if(!strcmp(dot, ".png")) return "image/png";
+    if(!strcmp(dot, ".jpg") || !strcmp(dot, ".jpeg")) return "image/jpeg";
+    if(!strcmp(dot, ".gif")) return "image/gif";
+    if(!strcmp(dot, ".webp")) return "image/webp";
+    if(!strcmp(dot, ".mp4")) return "video/mp4";
+    return "application/octet-stream";
+}
+
+static void upload_cb(int status, const char *body, void *ud){
+    main_ctx *L = ud;
+    (void)body;
+    set_status(L, status >= 200 && status < 300 ? "File uploaded"
+                                                : "Upload failed");
+}
+
+static void upick_open(main_ctx *L, uint64_t chan){
+    L->upick_n = file_list(UPLOAD_DIR, L->upick_names, 32);
+    L->upick_i = 0;
+    L->upick_chan = chan;
+    L->upick = 1;
+    if(L->upick_n == 0) set_status(L, "No files in downloads");
+}
+
+static void upick_upload(main_ctx *L){
+    char path[256], ctype[96], rpath[96];
+    char *data = NULL, *body = NULL;
+    size_t len = 0, blen = 0;
+    FILE *f;
+    long sz;
+    if(L->upick_n <= 0) return;
+    snprintf(path, sizeof path, "%s/%s", UPLOAD_DIR,
+             L->upick_names[L->upick_i]);
+    f = fopen(path, "rb");
+    if(!f){
+        set_status(L, "Open failed");
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    sz = ftell(f);
+    if(sz <= 0 || sz > (long)UPLOAD_MAX){
+        fclose(f);
+        set_status(L, "File too large");
+        return;
+    }
+    rewind(f);
+    len = (size_t)sz;
+    data = malloc(len);
+    if(!data){
+        fclose(f);
+        set_status(L, "Upload failed");
+        return;
+    }
+    if(fread(data, 1, len, f) != len){
+        free(data);
+        fclose(f);
+        set_status(L, "Read failed");
+        return;
+    }
+    fclose(f);
+    if(multipart_build(UPLOAD_BOUNDARY, NULL,
+                       L->upick_names[L->upick_i],
+                       upload_ctype(L->upick_names[L->upick_i]), data, len,
+                       &body, &blen) != 0){
+        free(data);
+        set_status(L, "Upload failed");
+        return;
+    }
+    free(data);
+    snprintf(ctype, sizeof ctype, "multipart/form-data; boundary=%s",
+             UPLOAD_BOUNDARY);
+    snprintf(rpath, sizeof rpath, "/api/v9/channels/%llu/messages",
+             (unsigned long long)L->upick_chan);
+    if(rest_send_ex(L->app->rest, "POST", rpath, ctype, body, blen,
+                    upload_cb, L) != 0)
+        set_status(L, "Upload failed");
+    else
+        set_status(L, "Uploading...");
+    free(body);
 }
 
 typedef struct {
@@ -2238,7 +2332,8 @@ static void draw_viewer(main_ctx *L){
         ui_text((SCR_W - ui_text_width(s, 20)) / 2, SCR_H / 2 - 12, s,
                 UI_TEXT_DIM, 20);
     }
-    snprintf(cap, sizeof cap, "%d / %d   UP/DOWN browse   CROSS close",
+    snprintf(cap, sizeof cap,
+             "%d / %d   UP/DOWN browse   SQUARE save   CROSS close",
              L->view_i + 1, L->view_n);
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
 }
@@ -2266,6 +2361,30 @@ static void draw_status_menu(main_ctx *L){
                                       UI_BLURPLE);
         ui_text(x + 20, iy + 6, STATUS_LABELS[i], UI_TEXT, 16);
     }
+}
+
+static void draw_upick(main_ctx *L){
+    int w = 640, h = 480;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Attach file", UI_TEXT, 18);
+    if(L->upick_n == 0){
+        ui_text(x + 20, y + 60, "No files in downloads", UI_TEXT_DIM, 16);
+    } else {
+        first = L->upick_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->upick_n - 9) first = L->upick_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->upick_n && i < first + 9; i++){
+            int ry = y + 56 + (i - first) * 40;
+            if(i == L->upick_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 34, 6, UI_BLURPLE);
+            ui_text(x + 24, ry, L->upick_names[i], UI_TEXT, 15);
+        }
+    }
+    ui_text(x + 20, y + h - 30, "CROSS upload   CIRCLE close",
+            UI_TEXT_DIM, 12);
 }
 
 static void draw_settings(main_ctx *L){
@@ -3050,10 +3169,14 @@ int screen_main_run(app_state *st){
             for(i = 0; i < ne; i++){
                 input_event e = evs[i];
                 if(L.viewer){
-                    if(e == IE_VIEW || e == IE_SELECT || e == IE_BACK ||
-                       e == IE_MENU)
+                    if(e == IE_VIEW || e == IE_SELECT || e == IE_BACK)
                         L.viewer = 0;
-                    else if(e == IE_UP && L.view_i > 0)
+                    else if(e == IE_MENU){
+                        if(image_save(L.view_urls[L.view_i], NULL))
+                            set_status(&L, "Saved to downloads");
+                        else
+                            set_status(&L, "Save failed");
+                    } else if(e == IE_UP && L.view_i > 0)
                         L.view_i--;
                     else if(e == IE_DOWN && L.view_i + 1 < L.view_n)
                         L.view_i++;
@@ -3277,6 +3400,21 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.upick){
+                    if(e == IE_UP || e == IE_DOWN){
+                        L.upick_i += e == IE_UP ? -1 : 1;
+                        if(L.upick_i < 0) L.upick_i = L.upick_n - 1;
+                        if(L.upick_i >= L.upick_n) L.upick_i = 0;
+                    } else if(e == IE_SELECT){
+                        if(L.upick_n > 0){
+                            upick_upload(&L);
+                            L.upick = 0;
+                        }
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.upick = 0;
+                    }
+                    continue;
+                }
                 if(L.gifs){
                     if(e == IE_UP && L.gif_i >= 4){
                         L.gif_i -= 4;
@@ -3334,7 +3472,15 @@ int screen_main_run(app_state *st){
                         scroll_clamp(&L);
                     }
                 } else if(e == IE_PGUP){
-                    if(L.focus == 2 && v.active){
+                    if(L.focus == 1 && v.active &&
+                       (v.active->type == 0 || v.active->type == 11)){
+                        uint64_t perms = chan_perms(&L, v.active);
+                        if(!perm_can(perms, PERM_SEND_MESSAGES) ||
+                           !perm_can(perms, PERM_ATTACH_FILES))
+                            set_status(&L, "No permission to attach");
+                        else
+                            upick_open(&L, v.active->id);
+                    } else if(L.focus == 2 && v.active){
                         L.stick = 0;
                         L.top_px -= CHAT_VIEW_H - 2 * MV_LINE_H;
                         scroll_clamp(&L);
@@ -3446,6 +3592,7 @@ int screen_main_run(app_state *st){
         if(L.settings) draw_settings(&L);
         if(L.profile) draw_profile(&L);
         if(L.gifs) draw_gifs(&L);
+        if(L.upick) draw_upick(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

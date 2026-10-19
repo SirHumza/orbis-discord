@@ -8,6 +8,7 @@
 #define PERM_ADMINISTRATOR (1ull << 3)
 #define PERM_VIEW_CHANNEL  (1ull << 10)
 #define PERM_SEND_MESSAGES (1ull << 11)
+#define PERM_ATTACH_FILES  (1ull << 15)
 #define PERM_CONNECT_VOICE (1ull << 20)
 #define PERM_SPEAK_VOICE   (1ull << 21)
 

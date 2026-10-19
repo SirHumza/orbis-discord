@@ -54,6 +54,7 @@ smoke-tested on retail hardware yet.
 | Forums: forum channels open a posts overlay, CROSS opens a post as a thread | Done | host tests, PS4 elf |
 | Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
 | Voice join: CROSS on a voice channel runs the voice WS/UDP handshake | Partial (no audio yet) | host tests, PS4 elf |
+| Attachments: SQUARE in the viewer saves to downloads, L1 uploads a saved file | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -70,7 +71,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (169 checks) + fixtures
+tests/        host test suite (171 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -113,7 +114,8 @@ Phase 1 (in progress):
 
 Phase 2, messaging parity:
 
-- [ ] Attachment upload/download, link previews
+- [x] Attachment download (viewer save) and upload (multipart, saved files)
+- [ ] Link previews
 - [x] Image viewer: fullscreen fit with UP/DOWN cycling, TRIANGLE opens, CROSS closes
 - [x] Reaction rendering: chip row, counts, me highlight, live gateway updates
 - [x] Stickers: PNG/APNG rendered, GIF first frame, Lottie name fallback
@@ -159,8 +161,9 @@ Phase 2, messaging parity:
 - Attachments are fetched synchronously from the CDN on first draw, so a slow
   or large image can stall the render loop (HTTP responses are capped at 4 MB).
 - Attachments are capped at 4 per message and embeds at 2; embed fields,
-  footers, authors and video embeds are not rendered, and uploads are not
-  implemented.
+  footers, authors and video embeds are not rendered. Uploads are
+  attachment-only (no caption), limited to 8 MB, and read from
+  `/data/orbis-discord/downloads`.
 - User-token clients are against Discord's terms; use at your own risk.
 
 ## Credits

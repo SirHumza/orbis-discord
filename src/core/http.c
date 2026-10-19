@@ -107,8 +107,15 @@ static size_t dechunk(char *s, size_t n){
 
 int http_request(http *h, const char *host, const char *method, const char *path,
                  const char *body, const char *token, http_resp *out){
+    return http_request_ex(h, host, method, path, "application/json", body,
+                           body ? strlen(body) : 0, token, out);
+}
+
+int http_request_ex(http *h, const char *host, const char *method,
+                    const char *path, const char *ctype, const char *body,
+                    size_t blen, const char *token, http_resp *out){
     char hdr[1024];
-    size_t blen = body ? strlen(body) : 0;
+    const char *ct = ctype && *ctype ? ctype : "application/json";
     int n, r;
     char *resp;
     size_t cap = 65536, len = 0, total;
@@ -122,15 +129,15 @@ int http_request(http *h, const char *host, const char *method, const char *path
     if(token && *token)
         n = snprintf(hdr, sizeof hdr,
             "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: orbis-discord/0.1\r\n"
-            "Authorization: %s\r\nContent-Type: application/json\r\n"
+            "Authorization: %s\r\nContent-Type: %s\r\n"
             "Content-Length: %zu\r\nConnection: close\r\n\r\n",
-            method, path, host, token, blen);
+            method, path, host, token, ct, blen);
     else
         n = snprintf(hdr, sizeof hdr,
             "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: orbis-discord/0.1\r\n"
-            "Content-Type: application/json\r\n"
+            "Content-Type: %s\r\n"
             "Content-Length: %zu\r\nConnection: close\r\n\r\n",
-            method, path, host, blen);
+            method, path, host, ct, blen);
     if(n <= 0 || (size_t)n >= sizeof hdr) return -2;
     if(h->io.write(h->io.ctx, hdr, (size_t)n) < 0){
         if(h->io.close) h->io.close(h->io.ctx);
