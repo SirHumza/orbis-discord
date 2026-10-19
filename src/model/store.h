@@ -11,6 +11,8 @@ typedef struct {
     uint64_t id;
     uint32_t color;
     int position;
+    char name[64];
+    int hoist;
 } role;
 
 typedef struct {
@@ -84,6 +86,7 @@ typedef struct member {
     char avatar_url[128];
     uint32_t color;
     int online;
+    uint64_t top_role;
 } member;
 
 typedef struct {
@@ -113,6 +116,8 @@ size_t store_channels_for_guild(store *, uint64_t guild_id, uint64_t *out, size_
 size_t store_dm_channels(store *, const channel **out, size_t cap);
 size_t store_guilds(store *, const guild **out, size_t cap);
 size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
+size_t store_guild_hoisted_roles(store *, uint64_t guild_id, const role **out, size_t cap);
+void store_set_member_top_role(store *, uint64_t guild_id, uint64_t user_id, uint64_t role);
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);
 void store_set_member_name(store *, uint64_t guild_id, uint64_t user_id, const char *name);
 void store_set_member_color(store *, uint64_t guild_id, uint64_t user_id, uint32_t color);

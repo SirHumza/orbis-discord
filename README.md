@@ -43,6 +43,7 @@ rest of the feature set are the next milestones.
 | GIF picker: Tenor search/trending grid (touchpad), CROSS sends the GIF link | Done | host tests, PS4 elf |
 | Guild rail badges: unread dot, mention-count pill per guild | Done | host tests, PS4 elf |
 | Notification sounds: distinct message/mention tones via SDL audio | Done | host tests, PS4 elf |
+| Role hoisting: member list grouped by hoisted role, colored headers | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -59,7 +60,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (148 checks) + fixtures
+tests/        host test suite (150 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -120,7 +121,7 @@ Phase 2, messaging parity:
 - [x] Notification sounds (message/mention tones, gateway-driven)
 - [x] Avatars/guild icons from the CDN, role colors on author/member names
 - [x] Member profiles (avatar, tag, joined date, bot badge)
-- [ ] Role hoisting/sections
+- [x] Role hoisting (member list sections by hoisted role)
 - [x] DM list (REST), friends overlay (OPTIONS) with open/create DM
 - [x] Presence control (L3 picker, gateway op 3)
 - [ ] Group DM management

@@ -24,6 +24,26 @@ static size_t count(jl_val_t *arr){
     return arr && arr->type == JL_ARRAY ? (size_t)arr->count : 0;
 }
 
+static uint64_t top_hoisted_role(const guild *gu, jl_val_t *ids){
+    uint64_t top = 0;
+    int best = -1;
+    size_t k;
+    int i;
+    if(!gu) return 0;
+    for(k = 0; k < count(ids); k++){
+        jl_val_t *rv = at(ids, k);
+        uint64_t rid = rv && rv->type == JL_STRING ? sn_parse(rv->str) : 0;
+        for(i = 0; i < gu->nroles; i++){
+            if(gu->roles[i].id == rid && gu->roles[i].hoist &&
+               gu->roles[i].position > best){
+                best = gu->roles[i].position;
+                top = gu->roles[i].id;
+            }
+        }
+    }
+    return top;
+}
+
 static uint32_t role_color(const guild *gu, jl_val_t *ids){
     uint32_t color = 0;
     int best = -1;
@@ -65,6 +85,11 @@ static void put_guild(store *st, jl_val_t *gobj){
             if(!r->id) continue;
             r->color = (uint32_t)gw_num(rj, "color");
             r->position = gw_num(rj, "position");
+            cp(r->name, sizeof r->name, gw_string(rj, "name"));
+            {
+                jl_val_t *h = gw_obj(rj, "hoist");
+                r->hoist = h && h->type == JL_BOOL && h->num;
+            }
             gu.nroles++;
         }
     }
@@ -99,6 +124,7 @@ static void put_guild(store *st, jl_val_t *gobj){
         cdn_avatar_url(mem.avatar_url, sizeof mem.avatar_url, mem.user,
                        gw_string(u, "avatar"));
         mem.color = role_color(&gu, gw_obj(m, "roles"));
+        mem.top_role = top_hoisted_role(&gu, gw_obj(m, "roles"));
         mem.online = gw_string(m, "status")[0] != 0 && strcmp(gw_string(m, "status"), "offline") != 0;
         store_put_member(st, &mem);
     }
@@ -211,9 +237,13 @@ static int on_member_update(gateway *g, jl_val_t *d){
     uint64_t user = gw_u64(u, "id");
     if(!guild || !user) return GW_EV_NONE;
     if(gw_string(u, "username")[0]) store_set_member_name(gw_store(g), guild, user, gw_string(u, "username"));
-    if(roles && roles->type == JL_ARRAY)
+    if(roles && roles->type == JL_ARRAY){
+        const struct guild *gu = store_guild(gw_store(g), guild);
         store_set_member_color(gw_store(g), guild, user,
-                               role_color(store_guild(gw_store(g), guild), roles));
+                               role_color(gu, roles));
+        store_set_member_top_role(gw_store(g), guild, user,
+                                  top_hoisted_role(gu, roles));
+    }
     return GW_EV_PRESENCE;
 }
 

@@ -316,6 +316,30 @@ TEST(test_store_guild_unread_counts){
     store_free(st);
 }
 
+TEST(test_store_hoisted_roles){
+    store *st = store_new();
+    guild gu;
+    const role *out[8];
+    ASSERT_TRUE(st != NULL);
+    memset(&gu, 0, sizeof gu);
+    gu.id = 9;
+    gu.roles[0].id = 1; gu.roles[0].position = 5; gu.roles[0].hoist = 1;
+    snprintf(gu.roles[0].name, sizeof gu.roles[0].name, "Admin");
+    gu.roles[1].id = 2; gu.roles[1].position = 3; gu.roles[1].hoist = 1;
+    snprintf(gu.roles[1].name, sizeof gu.roles[1].name, "Mod");
+    gu.roles[2].id = 3; gu.roles[2].position = 9; gu.roles[2].hoist = 0;
+    snprintf(gu.roles[2].name, sizeof gu.roles[2].name, "Secret");
+    gu.roles[3].id = 4; gu.roles[3].position = 7; gu.roles[3].hoist = 1;
+    gu.nroles = 4;
+    store_put_guild(st, &gu);
+    ASSERT_EQ_INT(store_guild_hoisted_roles(st, 9, out, 8), 2);
+    ASSERT_EQ_INT(out[0]->id, 1);
+    ASSERT_EQ_INT(out[1]->id, 2);
+    ASSERT_EQ_INT(store_guild_hoisted_roles(st, 9, out, 1), 1);
+    ASSERT_EQ_INT(store_guild_hoisted_roles(st, 99, out, 8), 0);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -333,4 +357,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_unread();
     g_tests_run++; test_store_message_lookup();
     g_tests_run++; test_store_guild_unread_counts();
+    g_tests_run++; test_store_hoisted_roles();
 }

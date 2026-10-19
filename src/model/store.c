@@ -475,6 +475,36 @@ int store_unread(store *st, uint64_t chan){
     return 0;
 }
 
+size_t store_guild_hoisted_roles(store *st, uint64_t guild_id, const role **out,
+                                 size_t cap){
+    const guild *gu = store_guild(st, guild_id);
+    size_t n = 0, i, j;
+    if(!gu || !out || cap == 0) return 0;
+    for(i = 0; i < (size_t)gu->nroles && n < cap; i++){
+        const role *r = &gu->roles[i];
+        if(!r->hoist || !r->name[0]) continue;
+        out[n++] = r;
+    }
+    for(i = 1; i < n; i++){
+        const role *key = out[i];
+        for(j = i; j > 0 && out[j - 1]->position < key->position; j--)
+            out[j] = out[j - 1];
+        out[j] = key;
+    }
+    return n;
+}
+
+void store_set_member_top_role(store *st, uint64_t guild_id, uint64_t user_id,
+                               uint64_t role){
+    size_t i;
+    if(!st) return;
+    for(i = 0; i < st->nmembers; i++)
+        if(st->members[i].guild == guild_id && st->members[i].user == user_id){
+            st->members[i].top_role = role;
+            return;
+        }
+}
+
 void store_guild_unread(store *st, uint64_t guild_id, int *unread, int *mentions){
     size_t i;
     if(unread) *unread = 0;

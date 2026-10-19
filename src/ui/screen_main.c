@@ -1349,26 +1349,52 @@ static void badges_refresh(main_ctx *L){
     }
 }
 
+static void draw_member_row(const member *m, int y, int online){
+    char nb[64];
+    ui_rrect(MEMBER_X + 16, y + 4, 20, 20, 10, UI_SEP);
+    if(m->avatar_url[0]) ui_img(m->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
+    ui_rect(MEMBER_X + 28, y + 16, 8, 8, online ? UI_ONLINE : UI_OFFLINE);
+    trunc_utf8(nb, sizeof nb, m->name, 20);
+    ui_text(MEMBER_X + 44, y, nb,
+            m->color ? m->color : (online ? UI_TEXT : UI_TEXT_DIM), 16);
+}
+
 static void draw_members(main_ctx *L, const frame_view *v){
     const member *ms[256];
-    size_t n, i;
-    int y = 52, on = 0;
+    const role *hr[64];
+    size_t n, nr, k, i;
+    int y = 52, on = 0, grouped = 0;
     char buf[96], nb[64];
     if(v->dm || v->gi < 0 || v->ng <= 0) return;
     n = store_members(L->app->st, v->guilds[v->gi]->id, ms, 256);
     for(i = 0; i < n; i++)
         if(ms[i]->online) on++;
-    snprintf(buf, sizeof buf, "ONLINE - %d", on);
+    nr = store_guild_hoisted_roles(L->app->st, v->guilds[v->gi]->id, hr, 64);
+    for(k = 0; k < nr && y < SCR_H - 40; k++){
+        int cnt = 0;
+        uint32_t hc;
+        for(i = 0; i < n; i++)
+            if(ms[i]->online && ms[i]->top_role == hr[k]->id) cnt++;
+        if(!cnt) continue;
+        hc = hr[k]->color ? (0xFF000000u | hr[k]->color) : UI_TEXT_DIM;
+        trunc_utf8(nb, sizeof nb, hr[k]->name, 18);
+        snprintf(buf, sizeof buf, "%s - %d", nb, cnt);
+        ui_text(MEMBER_X + 16, y, buf, hc, 12);
+        y += 22;
+        for(i = 0; i < n && y < SCR_H - 40; i++){
+            if(!ms[i]->online || ms[i]->top_role != hr[k]->id) continue;
+            draw_member_row(ms[i], y, 1);
+            y += 28;
+        }
+        grouped += cnt;
+    }
+    snprintf(buf, sizeof buf, "ONLINE - %d", on - grouped);
     ui_text(MEMBER_X + 16, y, buf, UI_TEXT_DIM, 12);
     y += 22;
     for(i = 0; i < n && y < SCR_H - 40; i++){
         if(!ms[i]->online) continue;
-        ui_rrect(MEMBER_X + 16, y + 4, 20, 20, 10, UI_SEP);
-        if(ms[i]->avatar_url[0])
-            ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
-        ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_ONLINE);
-        trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
-        ui_text(MEMBER_X + 44, y, nb, ms[i]->color ? ms[i]->color : UI_TEXT, 16);
+        if(ms[i]->top_role) continue;
+        draw_member_row(ms[i], y, 1);
         y += 28;
     }
     snprintf(buf, sizeof buf, "OFFLINE - %d", (int)n - on);
@@ -1377,12 +1403,7 @@ static void draw_members(main_ctx *L, const frame_view *v){
     y += 22;
     for(i = 0; i < n && y < SCR_H - 40; i++){
         if(ms[i]->online) continue;
-        ui_rrect(MEMBER_X + 16, y + 4, 20, 20, 10, UI_SEP);
-        if(ms[i]->avatar_url[0])
-            ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
-        ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_OFFLINE);
-        trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
-        ui_text(MEMBER_X + 44, y, nb, ms[i]->color ? ms[i]->color : UI_TEXT_DIM, 16);
+        draw_member_row(ms[i], y, 0);
         y += 28;
     }
 }

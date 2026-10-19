@@ -193,6 +193,31 @@ TEST(test_gateway_msg_sound){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_role_hoisting){
+    const member *ms[4];
+    size_t n, i;
+    uint64_t bob = 99, ann = 99, carl = 99;
+    setup();
+    feed("{\"op\":0,\"s\":1,\"t\":\"GUILD_CREATE\",\"d\":{\"id\":\"9\",\"name\":\"G\",\"channels\":[],"
+         "\"roles\":[{\"id\":\"1\",\"name\":\"Admin\",\"hoist\":true,\"color\":0,\"position\":5},"
+         "{\"id\":\"2\",\"name\":\"Mod\",\"hoist\":true,\"color\":0,\"position\":3},"
+         "{\"id\":\"3\",\"name\":\"Secret\",\"hoist\":false,\"color\":0,\"position\":9}],"
+         "\"members\":[{\"user\":{\"id\":\"7\",\"username\":\"bob\"},\"roles\":[\"3\",\"1\"]},"
+         "{\"user\":{\"id\":\"8\",\"username\":\"ann\"},\"roles\":[\"2\"]},"
+         "{\"user\":{\"id\":\"9\",\"username\":\"carl\"},\"roles\":[\"3\"]}]}}");
+    n = store_members(s, 9, ms, 4);
+    ASSERT_EQ_INT(n, 3);
+    for(i = 0; i < n; i++){
+        if(!strcmp(ms[i]->name, "bob")) bob = ms[i]->top_role;
+        if(!strcmp(ms[i]->name, "ann")) ann = ms[i]->top_role;
+        if(!strcmp(ms[i]->name, "carl")) carl = ms[i]->top_role;
+    }
+    ASSERT_EQ_INT(bob, 1);
+    ASSERT_EQ_INT(ann, 2);
+    ASSERT_EQ_INT(carl, 0);
+    gw_free(g); store_free(s);
+}
+
 TEST(test_events_role_colors){
     setup();
     const member *ms[4];
@@ -243,4 +268,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_role_colors();
     g_tests_run++; test_gateway_presence_payload();
     g_tests_run++; test_gateway_msg_sound();
+    g_tests_run++; test_events_role_hoisting();
 }
