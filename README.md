@@ -50,6 +50,7 @@ rest of the feature set are the next milestones.
 | Channel invites: SQUARE on a text channel lists, creates, and revokes invites | Done | host tests, PS4 elf |
 | Threads: TRIANGLE lists active threads, CROSS opens one in the channel list | Done | host tests, PS4 elf |
 | Forums: forum channels open a posts overlay, CROSS opens a post as a thread | Done | host tests, PS4 elf |
+| Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -136,7 +137,8 @@ Phase 2, messaging parity:
 - [x] Channel invites (list/create/revoke)
 - [x] Active threads (list, open)
 - [x] Forums (browse and open active posts; creating posts is not wired)
-- [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
+- [x] Settings screen (account/gateway info, sound toggle, logout)
+- [ ] Slash commands, context menus, extra keyboard/pad shortcuts
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback
 - [ ] Mic capture (sceAudioIn) and input device selection
 - [ ] Screenshare: capture, encode, WebRTC go-live (hardware AVC access TBD)

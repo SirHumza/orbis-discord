@@ -208,6 +208,9 @@ typedef struct {
     char presence[16];
     int status_menu;
     int status_i;
+    int settings;
+    int settings_i;
+    int logout;
     int profile;
     int profile_pending;
     int profile_gen;
@@ -244,7 +247,7 @@ static const char *STATUS_CHOICES[] = {
 };
 
 static const char *STATUS_LABELS[] = {
-    "Online", "Idle", "Do Not Disturb", "Invisible"
+    "Online", "Idle", "Do Not Disturb", "Invisible", "Settings"
 };
 
 static void send_presence(main_ctx *L){
@@ -2096,7 +2099,7 @@ static const char *friend_type_label(int type){
 }
 
 static void draw_status_menu(main_ctx *L){
-    int n = (int)(sizeof STATUS_CHOICES / sizeof STATUS_CHOICES[0]);
+    int n = (int)(sizeof STATUS_LABELS / sizeof STATUS_LABELS[0]);
     int w = 320, item_h = 40, h = 52 + n * item_h;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
@@ -2108,6 +2111,46 @@ static void draw_status_menu(main_ctx *L){
                                       UI_BLURPLE);
         ui_text(x + 20, iy + 6, STATUS_LABELS[i], UI_TEXT, 16);
     }
+}
+
+static void draw_settings(main_ctx *L){
+    int w = 640, h = 480;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2;
+    char line[128];
+    const char *name = L->app->gw ? gw_self_name(L->app->gw) : "";
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Settings", UI_TEXT, 18);
+    snprintf(line, sizeof line, "Account: %s",
+             name && name[0] ? name : "unknown");
+    ui_text(x + 20, y + 52, line, UI_TEXT_DIM, 14);
+    if(L->app->gw){
+        snprintf(line, sizeof line, "User ID: %llu",
+                 (unsigned long long)gw_self_id(L->app->gw));
+        ui_text(x + 20, y + 72, line, UI_TEXT_DIM, 14);
+    }
+    snprintf(line, sizeof line, "Gateway: %s  Token: %s",
+             L->up ? "connected" : "offline",
+             L->app->token[0] ? "saved" : "none");
+    ui_text(x + 20, y + 92, line, UI_TEXT_DIM, 14);
+    ui_text(x + 20, y + 126, "Controls", UI_TEXT, 15);
+    ui_text(x + 20, y + 148, "CROSS select/send   CIRCLE back", UI_TEXT_DIM, 13);
+    ui_text(x + 20, y + 168, "TRIANGLE threads/members   SQUARE actions",
+            UI_TEXT_DIM, 13);
+    ui_text(x + 20, y + 188, "L2 pins   R2 search   OPTIONS friends",
+            UI_TEXT_DIM, 13);
+    ui_text(x + 20, y + 208, "L3 status/settings   touchpad GIF",
+            UI_TEXT_DIM, 13);
+    if(L->settings_i == 0)
+        ui_rrect(x + 12, y + 256, w - 24, 42, 6, UI_BLURPLE);
+    else if(L->settings_i == 1)
+        ui_rrect(x + 12, y + 306, w - 24, 42, 6, UI_BLURPLE);
+    snprintf(line, sizeof line, "Notification sounds: %s",
+             sound_enabled() ? "On" : "Off");
+    ui_text(x + 20, y + 268, line, UI_TEXT, 16);
+    ui_text(x + 20, y + 318, "Log out", UI_TEXT, 16);
+    ui_text(x + 20, y + h - 30, "CROSS choose   CIRCLE close",
+            UI_TEXT_DIM, 12);
 }
 
 static void draw_friends(main_ctx *L){
@@ -2629,6 +2672,7 @@ int screen_main_run(app_state *st){
     for(;;){
         uint64_t now = mono_ms();
         gateway *g = st->gw;
+        if(L.logout) break;
 
         if(!L.up && gw_reconnect_due(g, now)){
             char key[32];
@@ -2877,18 +2921,42 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.settings){
+                    if(e == IE_UP || e == IE_DOWN){
+                        L.settings_i += e == IE_UP ? -1 : 1;
+                        if(L.settings_i < 0) L.settings_i = 1;
+                        if(L.settings_i > 1) L.settings_i = 0;
+                    } else if(e == IE_SELECT){
+                        if(L.settings_i == 0){
+                            sound_set_enabled(!sound_enabled());
+                        } else {
+                            L.settings = 0;
+                            L.logout = 1;
+                            log_msg("settings: logout");
+                        }
+                    } else if(e == IE_BACK || e == IE_MENU ||
+                              e == IE_STATUS){
+                        L.settings = 0;
+                    }
+                    continue;
+                }
                 if(L.status_menu){
-                    int n = (int)(sizeof STATUS_CHOICES /
-                                  sizeof STATUS_CHOICES[0]);
+                    int n = (int)(sizeof STATUS_LABELS /
+                                  sizeof STATUS_LABELS[0]);
                     if(e == IE_UP || e == IE_DOWN){
                         L.status_i += e == IE_UP ? -1 : 1;
                         if(L.status_i < 0) L.status_i = n - 1;
                         if(L.status_i >= n) L.status_i = 0;
                     } else if(e == IE_SELECT){
-                        snprintf(L.presence, sizeof L.presence, "%s",
-                                 STATUS_CHOICES[L.status_i]);
+                        if(L.status_i == n - 1){
+                            L.settings = 1;
+                            L.settings_i = 0;
+                        } else {
+                            snprintf(L.presence, sizeof L.presence, "%s",
+                                     STATUS_CHOICES[L.status_i]);
+                            send_presence(&L);
+                        }
                         L.status_menu = 0;
-                        send_presence(&L);
                     } else if(e == IE_BACK || e == IE_MENU ||
                               e == IE_STATUS){
                         L.status_menu = 0;
@@ -3132,6 +3200,7 @@ int screen_main_run(app_state *st){
         if(L.tview) draw_tview(&L);
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
+        if(L.settings) draw_settings(&L);
         if(L.profile) draw_profile(&L);
         if(L.gifs) draw_gifs(&L);
         ui_frame_end();
@@ -3141,5 +3210,5 @@ int screen_main_run(app_state *st){
 
     free(L.recv);
     ws_close(&L.ws);
-    return auth_failed ? 1 : 0;
+    return (auth_failed || L.logout) ? 1 : 0;
 }

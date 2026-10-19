@@ -14,6 +14,7 @@ static SDL_AudioDeviceID s_dev;
 static int16_t s_buf[2][SND_FRAMES];
 static volatile int s_cur = -1;
 static volatile int s_len, s_pos;
+static volatile int s_enabled = 1;
 
 static void snd_cb(void *ud, Uint8 *stream, int len){
     int frames = len / 2;
@@ -54,9 +55,12 @@ int sound_init(void){
     return 1;
 }
 
+int sound_enabled(void){ return s_enabled; }
+void sound_set_enabled(int on){ s_enabled = on; }
+
 static void play(int kind){
     int next, n;
-    if(!s_dev) return;
+    if(!s_dev || !s_enabled) return;
     next = s_cur == 0 ? 1 : 0;
     n = tone_render(kind, s_buf[next], SND_FRAMES);
     if(n <= 0) return;

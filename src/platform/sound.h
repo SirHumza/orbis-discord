@@ -3,6 +3,8 @@
 #define ORBIS_SOUND_H
 
 int sound_init(void);
+int sound_enabled(void);
+void sound_set_enabled(int on);
 void sound_message(void);
 void sound_mention(void);
 
