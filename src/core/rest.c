@@ -56,6 +56,18 @@ int rest_send(rest *r, const char *method, const char *path, const char *body,
     return 0;
 }
 
+int rest_get_messages(rest *r, uint64_t chan, uint64_t before, rest_cb cb, void *ud){
+    char path[160];
+    if(before)
+        snprintf(path, sizeof path,
+                 "/api/v9/channels/%llu/messages?limit=50&before=%llu",
+                 (unsigned long long)chan, (unsigned long long)before);
+    else
+        snprintf(path, sizeof path, "/api/v9/channels/%llu/messages?limit=50",
+                 (unsigned long long)chan);
+    return rest_send(r, "GET", path, NULL, cb, ud);
+}
+
 static uint64_t retry_after_ms(const char *body){
     jl_val_t *v = body ? jl_parse(body, strlen(body)) : NULL;
     uint64_t ms = 1000;

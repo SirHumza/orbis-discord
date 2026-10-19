@@ -107,6 +107,24 @@ TEST(test_http_omits_auth_when_token_empty){
     http_free(h);
 }
 
+TEST(test_rest_get_messages_path){
+    memio m = {0};
+    m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n[{}]";
+    m.responses[1] = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n[{}]";
+    http_io io = {mread, mwrite, &m};
+    http *h = http_new(io);
+    rest *r = rest_new(h, "t");
+    ASSERT_TRUE(rest_get_messages(r, 123, 0, NULL, NULL) == 0);
+    ASSERT_EQ_INT(rest_pump(r, 0), 1);
+    ASSERT_TRUE(strstr(m.capture, "GET /api/v9/channels/123/messages?limit=50 HTTP/1.1") != NULL);
+    mnext(&m);
+    ASSERT_TRUE(rest_get_messages(r, 123, 456, NULL, NULL) == 0);
+    ASSERT_EQ_INT(rest_pump(r, 0), 1);
+    ASSERT_TRUE(strstr(m.capture, "before=456") != NULL);
+    rest_free(r);
+    http_free(h);
+}
+
 TEST(test_rest_retry_after_from_json_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{\"retry_after\":0.5}";
@@ -126,5 +144,6 @@ void run_rest_tests(void){
     g_tests_run++; test_http_post_body();
     g_tests_run++; test_rest_ratelimit();
     g_tests_run++; test_http_omits_auth_when_token_empty();
+    g_tests_run++; test_rest_get_messages_path();
     g_tests_run++; test_rest_retry_after_from_json_body();
 }

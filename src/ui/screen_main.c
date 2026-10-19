@@ -11,6 +11,7 @@
 #include "renderer.h"
 #include "theme.h"
 #include "nav.h"
+#include "msgview.h"
 #include "../core/ws.h"
 #include "../core/jsonlite.h"
 #include "../core/clock.h"
@@ -41,6 +42,9 @@
 #define GUILD_PITCH 56
 #define GUILD_VIS 18
 #define CHAN_VIS 27
+#define CHAT_Y0 (HEADER_H + 1)
+#define CHAT_H (SCR_H - CHAT_Y0)
+#define MSG_PAD 16
 
 typedef struct {
     const guild *guilds[64];
@@ -66,12 +70,30 @@ typedef struct {
     nav gn, cn;
     int focus;
     char status[64];
+    mv_layout mv;
+    const message *last_head;
+    const message *last_tail;
+    int last_count;
+    int stick;
+    int prepend;
+    int top_px;
+    uint64_t chan_loaded;
+    uint64_t hist_before;
+    int has_older;
+    int hist_pending;
+    int hist_older_pending;
 } main_ctx;
 
 typedef struct {
     main_ctx *ctx;
     uint64_t guild;
 } chan_fetch;
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+    int older;
+} hist_fetch;
 
 static uint64_t mono_ms(void){
     return (uint64_t)orbis_mono_s() * 1000u;
@@ -208,6 +230,120 @@ static void fetch_channels(main_ctx *L, uint64_t guild_id){
     }
 }
 
+static const message *msg_tail(const message *m){
+    while(m && m->next) m = m->next;
+    return m;
+}
+
+static int msg_count(const message *m){
+    int n = 0;
+    while(m){ n++; m = m->next; }
+    return n;
+}
+
+static void messages_cb(int status, const char *body, void *ud){
+    hist_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v;
+    int i;
+    if(f->older) L->hist_older_pending = 0;
+    else L->hist_pending = 0;
+    if(status != 200){
+        log_msg("rest: messages failed (%d)", status);
+        free(f);
+        return;
+    }
+    v = body ? jl_parse(body, strlen(body)) : NULL;
+    if(v && v->type == JL_ARRAY){
+        for(i = 0; i < v->count; i++){
+            jl_val_t *o = jl_arr_at(v, i);
+            jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
+            jl_val_t *content = o ? jl_obj_get(o, "content") : NULL;
+            jl_val_t *author = o ? jl_obj_get(o, "author") : NULL;
+            jl_val_t *aid = author ? jl_obj_get(author, "id") : NULL;
+            jl_val_t *aname = author ? jl_obj_get(author, "username") : NULL;
+            jl_val_t *edited = o ? jl_obj_get(o, "edited_timestamp") : NULL;
+            message m;
+            if(!id || id->type != JL_STRING) continue;
+            memset(&m, 0, sizeof m);
+            m.id = sn_parse(id->str);
+            m.chan = f->chan;
+            if(aid && aid->type == JL_STRING) m.author_id = sn_parse(aid->str);
+            if(aname && aname->type == JL_STRING)
+                snprintf(m.author_name, sizeof m.author_name, "%s", aname->str);
+            if(content && content->type == JL_STRING)
+                snprintf(m.content, sizeof m.content, "%s", content->str);
+            if(edited && edited->type == JL_STRING){
+                m.has_edit = 1;
+                m.edited_at = sn_parse(edited->str);
+            }
+            store_put_message(L->app->st, &m);
+        }
+        if(f->older && v->count < 50) L->has_older = 0;
+        if(!f->older) L->has_older = v->count >= 50;
+        log_msg("rest: %d messages for %llu%s", v->count,
+                (unsigned long long)f->chan, f->older ? " (older)" : "");
+    }
+    jl_free(v);
+    if(f->chan == L->chan_loaded){
+        const message *head = store_messages(L->app->st, f->chan);
+        L->hist_before = head ? head->id : 0;
+    }
+    if(f->older) L->prepend = 1;
+    else L->stick = 1;
+    free(f);
+}
+
+static void fetch_history(main_ctx *L, uint64_t chan, int older){
+    hist_fetch *f;
+    if(older && (L->hist_older_pending || !L->has_older ||
+                 (L->hist_before == 0 && L->mv.n > 0)))
+        return;
+    if(!older && L->hist_pending) return;
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    f->older = older;
+    if(older) L->hist_older_pending = 1;
+    else L->hist_pending = 1;
+    if(rest_get_messages(L->app->rest, chan, older ? L->hist_before : 0,
+                         messages_cb, f) != 0){
+        if(older) L->hist_older_pending = 0;
+        else L->hist_pending = 0;
+        free(f);
+    }
+}
+
+static int measure_adapter(void *ud, const char *s, size_t len){
+    char buf[MV_MEASURE_MAX + 1];
+    (void)ud;
+    if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
+    memcpy(buf, s, len);
+    buf[len] = 0;
+    return ui_text_width(buf, MV_LINE_H - 6);
+}
+
+static void scroll_clamp(main_ctx *L){
+    int max = L->mv.height - CHAT_H;
+    if(max < 0) max = 0;
+    if(L->top_px > max) L->top_px = max;
+    if(L->top_px < 0) L->top_px = 0;
+}
+
+static void view_rebuild(main_ctx *L, uint64_t chan){
+    int old_h = L->mv.height;
+    const message *head = store_messages(L->app->st, chan);
+    mv_build(&L->mv, head, CHAT_W - 2 * MSG_PAD, measure_adapter, NULL);
+    if(L->prepend && !L->stick) L->top_px += L->mv.height - old_h;
+    L->prepend = 0;
+    if(L->stick) L->top_px = L->mv.height;
+    scroll_clamp(L);
+    L->last_head = head;
+    L->last_tail = msg_tail(head);
+    L->last_count = msg_count(head);
+}
+
 static void gw_drop(main_ctx *L, uint64_t now, const char *why){
     app_state *app = L->app;
     if(L->up){
@@ -239,6 +375,51 @@ static void view_build(main_ctx *L, frame_view *v){
     nav_step(&L->cn, IE_NONE, v->nt);
     v->ci = nav_index(&L->cn);
     if(v->nt > 0) v->active = v->text[v->ci];
+}
+
+static void draw_messages(main_ctx *L){
+    int i;
+    if(L->mv.n == 0) return;
+    ui_set_clip(CHAT_X, CHAT_Y0, CHAT_W, CHAT_H);
+    for(i = 0; i < L->mv.n; i++){
+        const mv_line *ln = &L->mv.lines[i];
+        int y = CHAT_Y0 + ln->y - L->top_px;
+        if(y + MV_LINE_H < CHAT_Y0) continue;
+        if(y > CHAT_Y0 + CHAT_H) break;
+        if(ln->is_sep){
+            char d[48];
+            int tw, half;
+            uint64_t t = (uint64_t)((ln->m->id >> 22) + 1420070400000ULL);
+            mv_day_str(t, d, sizeof d);
+            tw = ui_text_width(d, 12);
+            half = (CHAT_W - 2 * MSG_PAD - tw) / 2 - 12;
+            if(half > 0){
+                ui_rect(CHAT_X + MSG_PAD, y + MV_SEP_H / 2, half, 1, UI_SEP);
+                ui_rect(CHAT_X + CHAT_W - MSG_PAD - half, y + MV_SEP_H / 2,
+                        half, 1, UI_SEP);
+            }
+            ui_text(CHAT_X + (CHAT_W - tw) / 2, y + 10, d, UI_TEXT_DIM, 12);
+        } else if(ln->author){
+            char tbuf[8];
+            int nw;
+            uint64_t t = (uint64_t)((ln->m->id >> 22) + 1420070400000ULL);
+            mv_time_str(t, tbuf, sizeof tbuf);
+            ui_text(CHAT_X + MSG_PAD, y + 3, ln->m->author_name, UI_TEXT, 16);
+            nw = ui_text_width(ln->m->author_name, 16);
+            ui_text(CHAT_X + MSG_PAD + 12 + nw, y + 5, tbuf, UI_TEXT_DIM, 12);
+            if(ln->m->has_edit)
+                ui_text(CHAT_X + MSG_PAD + 20 + nw + ui_text_width(tbuf, 12),
+                        y + 5, "(edited)", UI_TEXT_DIM, 12);
+        } else {
+            char buf[MV_MEASURE_MAX + 1];
+            int len = ln->len;
+            if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
+            memcpy(buf, ln->m->content + ln->off, (size_t)len);
+            buf[len] = 0;
+            ui_text(CHAT_X + MSG_PAD, y + 2, buf, UI_TEXT, 16);
+        }
+    }
+    ui_clear_clip();
 }
 
 static void draw_main(main_ctx *L, const frame_view *v){
@@ -289,11 +470,21 @@ static void draw_main(main_ctx *L, const frame_view *v){
         trunc_utf8(buf, sizeof buf, buf, 48);
         ui_text(CHAT_X + 16, 14, buf, UI_TEXT, 18);
     }
-    {
-        const char *hint = v->active ? "Message history lands with Task 10"
-                                     : "Select a text channel";
+    if(L->focus == 2) ui_rect(CHAT_X, HEADER_H - 2, CHAT_W, 2, UI_BLURPLE);
+    if(!v->active){
+        const char *hint = "Select a text channel";
         ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2, 520,
                 hint, UI_TEXT_DIM, 16);
+    } else if(L->mv.n == 0){
+        const char *hint = L->hist_pending ? "Loading messages..." : "No messages yet";
+        ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2, 520,
+                hint, UI_TEXT_DIM, 16);
+    } else {
+        draw_messages(L);
+        ui_rect(CHAT_X, SCR_H - 34, CHAT_W, 34, UI_CHAT_BG);
+        ui_text(CHAT_X + MSG_PAD, SCR_H - 26,
+                "Up/Down: scroll   L1/R1: page   R3: bottom",
+                UI_TEXT_DIM, 12);
     }
 
     ui_rect(MEMBER_X, 0, MEMBER_W, SCR_H, UI_CHANNEL_BG);
@@ -408,6 +599,23 @@ int screen_main_run(app_state *st){
 
         view_build(&L, &v);
 
+        if(v.active && v.active->id != L.chan_loaded){
+            L.chan_loaded = v.active->id;
+            L.stick = 1;
+            L.prepend = 0;
+            L.top_px = 0;
+            L.has_older = 1;
+            L.hist_before = 0;
+            L.hist_pending = 0;
+            L.hist_older_pending = 0;
+            L.last_head = NULL;
+            L.last_tail = NULL;
+            L.last_count = -1;
+            L.mv.n = 0;
+            L.mv.height = 0;
+            fetch_history(&L, L.chan_loaded, 0);
+        }
+
         if(L.up && L.identified && !L.guilds_loaded && !L.guilds_pending &&
            now >= L.guilds_retry_at)
             fetch_guilds(&L);
@@ -419,17 +627,54 @@ int screen_main_run(app_state *st){
 
         rest_pump(st->rest, now);
 
+        if(L.chan_loaded){
+            const message *head = store_messages(st->st, L.chan_loaded);
+            if(head != L.last_head || msg_tail(head) != L.last_tail ||
+               msg_count(head) != L.last_count)
+                view_rebuild(&L, L.chan_loaded);
+        }
+
         {
             input_event evs[16];
             int ne = input_poll(evs, 16), i;
             for(i = 0; i < ne; i++){
                 input_event e = evs[i];
-                if(e == IE_LEFT) L.focus = 0;
-                else if(e == IE_RIGHT) L.focus = 1;
-                else if(e == IE_UP || e == IE_DOWN)
-                    nav_step(L.focus == 0 ? &L.gn : &L.cn, e,
-                             L.focus == 0 ? v.ng : v.nt);
-                else if(e == IE_SELECT)
+                if(e == IE_LEFT){
+                    if(L.focus > 0) L.focus--;
+                } else if(e == IE_RIGHT){
+                    if(L.focus < 2) L.focus++;
+                } else if(e == IE_UP || e == IE_DOWN){
+                    if(L.focus < 2)
+                        nav_step(L.focus == 0 ? &L.gn : &L.cn, e,
+                                 L.focus == 0 ? v.ng : v.nt);
+                    else {
+                        L.stick = 0;
+                        L.top_px += (e == IE_UP ? -3 : 3) * MV_LINE_H;
+                        scroll_clamp(&L);
+                    }
+                } else if(e == IE_PGUP){
+                    if(L.focus == 2 && v.active){
+                        L.stick = 0;
+                        L.top_px -= CHAT_H - 2 * MV_LINE_H;
+                        scroll_clamp(&L);
+                        if(L.top_px == 0 && L.mv.n > 0 && L.chan_loaded)
+                            fetch_history(&L, L.chan_loaded, 1);
+                    }
+                } else if(e == IE_PGDN){
+                    if(L.focus == 2){
+                        int max = L.mv.height - CHAT_H;
+                        if(max < 0) max = 0;
+                        L.top_px += CHAT_H - 2 * MV_LINE_H;
+                        scroll_clamp(&L);
+                        if(L.top_px >= max) L.stick = 1;
+                    }
+                } else if(e == IE_BOTTOM){
+                    if(L.focus == 2){
+                        L.stick = 1;
+                        L.top_px = L.mv.height;
+                        scroll_clamp(&L);
+                    }
+                } else if(e == IE_SELECT)
                     log_msg("input: select unbound");
                 else if(e == IE_BACK)
                     log_msg("input: back unbound");

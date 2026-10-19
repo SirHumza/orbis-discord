@@ -6,7 +6,8 @@
 typedef enum {
     IE_NONE = 0,
     IE_UP, IE_RIGHT, IE_DOWN, IE_LEFT,
-    IE_SELECT, IE_BACK
+    IE_SELECT, IE_BACK,
+    IE_PGUP, IE_PGDN, IE_BOTTOM
 } input_event;
 
 int input_init(void);

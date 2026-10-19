@@ -12,13 +12,14 @@
 #define REPEAT_DELAY_MS 380
 #define REPEAT_RATE_MS 90
 
-static const input_event EV[6] = {
-    IE_UP, IE_RIGHT, IE_DOWN, IE_LEFT, IE_SELECT, IE_BACK
+static const input_event EV[9] = {
+    IE_UP, IE_RIGHT, IE_DOWN, IE_LEFT, IE_SELECT, IE_BACK,
+    IE_PGUP, IE_PGDN, IE_BOTTOM
 };
 
 static int s_pad = -1;
 static unsigned s_prev;
-static uint64_t s_since[6];
+static uint64_t s_since[9];
 
 static uint64_t mono_ms(void){
     return (uint64_t)orbis_mono_s() * 1000u;
@@ -34,6 +35,9 @@ static unsigned pad_mask(const OrbisPadData *d){
     if((b & ORBIS_PAD_BUTTON_LEFT)  || lx < -STICK_DEADZONE) m |= 1u << 3;
     if(b & ORBIS_PAD_BUTTON_CROSS)  m |= 1u << 4;
     if(b & ORBIS_PAD_BUTTON_CIRCLE) m |= 1u << 5;
+    if(b & ORBIS_PAD_BUTTON_L1)     m |= 1u << 6;
+    if(b & ORBIS_PAD_BUTTON_R1)     m |= 1u << 7;
+    if(b & ORBIS_PAD_BUTTON_R3)     m |= 1u << 8;
     return m;
 }
 
@@ -60,13 +64,13 @@ int input_poll(input_event *out, int max){
     now = mono_ms();
     m = pad_mask(&d);
     pressed = m & ~s_prev;
-    for(i = 0; i < 6 && n < max; i++){
+    for(i = 0; i < 9 && n < max; i++){
         unsigned bit = 1u << i;
         if(!(m & bit)){ s_since[i] = 0; continue; }
         if(pressed & bit){
             out[n++] = EV[i];
             s_since[i] = now;
-        } else if(i < 4){
+        } else if(i < 4 || i == 6 || i == 7){
             if(s_since[i] == 0) s_since[i] = now;
             else if(now - s_since[i] >= REPEAT_DELAY_MS){
                 out[n++] = EV[i];
