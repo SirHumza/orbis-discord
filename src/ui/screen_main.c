@@ -20,15 +20,19 @@
 #include "../model/cdnurl.h"
 #include "../model/msgjson.h"
 #include "../model/snowflake.h"
+#include "../model/tenor.h"
 #include "../image.h"
 #include "../platform/input.h"
 #include "../platform/ime.h"
+#include "../platform/tenor_net.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+#define TENOR_KEY "LIVDSRZULELA"
 
 #define GW_HOST "gateway.discord.gg"
 #define GW_RESOURCE "/?v=9&encoding=json"
@@ -133,6 +137,12 @@ typedef struct {
     uint64_t emoji_guild;
     int react_custom_n;
     emoji_entry react_custom[EMOJI_MAX];
+    int gifs;
+    int gif_n;
+    int gif_i;
+    uint64_t gif_chan;
+    char gif_q[96];
+    gif_item gif_list[16];
     int pins;
     int pins_pending;
     int pins_loaded;
@@ -1145,6 +1155,36 @@ static void picker_open(main_ctx *L){
         emoji_fetch(L, ch->guild);
 }
 
+static void gif_prompt(main_ctx *L){
+    char q[96], enc[384], path[640], *body = NULL;
+    size_t len = 0;
+    memset(q, 0, sizeof q);
+    if(!ime_prompt("Search GIFs", "", q, sizeof q)) return;
+    if(rest_path_encode(q, enc, sizeof enc) < 0) return;
+    if(q[0])
+        snprintf(path, sizeof path,
+                 "/v2/search?key=%s&limit=16&media_filter=tinygif,gif&q=%s",
+                 TENOR_KEY, enc);
+    else
+        snprintf(path, sizeof path,
+                 "/v2/featured?key=%s&limit=16&media_filter=tinygif,gif",
+                 TENOR_KEY);
+    if(tenor_net_get(path, &body, &len) != 0){
+        set_status(L, "GIF search failed");
+        return;
+    }
+    L->gif_n = gif_from_tenor(body, L->gif_list, 16);
+    free(body);
+    if(L->gif_n <= 0){
+        set_status(L, "No GIFs found");
+        return;
+    }
+    snprintf(L->gif_q, sizeof L->gif_q, "%s", q);
+    L->gif_chan = L->chan_loaded;
+    L->gif_i = 0;
+    L->gifs = 1;
+}
+
 static const char *menu_label(int item){
     switch(item){
     case 1: return "Reply";
@@ -1752,6 +1792,44 @@ static void draw_react_pick(main_ctx *L){
     ui_text(x + 16, y + 84, "CROSS toggle   CIRCLE close", UI_TEXT_DIM, 12);
 }
 
+static void draw_gifs(main_ctx *L){
+    enum { COLS = 4 };
+    int cw = 210, ch = 150, pad = 12;
+    int rows = (L->gif_n + COLS - 1) / COLS;
+    int w = COLS * cw + pad * 2;
+    int h = 60 + rows * ch + 36;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
+    char title[128], t2[64];
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    if(L->gif_q[0])
+        snprintf(title, sizeof title, "GIFs: %s", L->gif_q);
+    else
+        snprintf(title, sizeof title, "Trending GIFs");
+    trunc_utf8(t2, sizeof t2, title, 46);
+    ui_text(x + pad + 8, y + 16, t2, UI_TEXT, 18);
+    for(i = 0; i < L->gif_n; i++){
+        const gif_item *g = &L->gif_list[i];
+        int cx = x + pad + (i % COLS) * cw;
+        int cy = y + 48 + (i / COLS) * ch;
+        int tw = cw - 16, th = ch - 16;
+        if(i == L->gif_i)
+            ui_rrect(cx - 2, cy - 2, cw - 4, ch - 4, 8, UI_BLURPLE);
+        if(g->w > 0 && g->h > 0){
+            th = tw * g->h / g->w;
+            if(th > ch - 16){
+                th = ch - 16;
+                tw = th * g->w / g->h;
+            }
+        }
+        if(!ui_img(g->preview, cx + (cw - tw) / 2, cy + (ch - th) / 2,
+                   tw, th))
+            ui_text(cx + 8, cy + 8, "GIF", UI_TEXT_DIM, 14);
+    }
+    ui_text(x + pad + 8, y + h - 26,
+            "CROSS send   R2 new search   CIRCLE close", UI_TEXT_DIM, 12);
+}
+
 static void draw_menu(main_ctx *L){
     int w = 320, item_h = 40, h = 52 + L->menu_n * item_h;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
@@ -2231,6 +2309,26 @@ int screen_main_run(app_state *st){
                     }
                     continue;
                 }
+                if(L.gifs){
+                    if(e == IE_UP && L.gif_i >= 4){
+                        L.gif_i -= 4;
+                    } else if(e == IE_DOWN && L.gif_i + 4 < L.gif_n){
+                        L.gif_i += 4;
+                    } else if(e == IE_LEFT && L.gif_i > 0){
+                        L.gif_i--;
+                    } else if(e == IE_RIGHT && L.gif_i + 1 < L.gif_n){
+                        L.gif_i++;
+                    } else if(e == IE_SELECT){
+                        send_message(&L, L.gif_chan, L.gif_list[L.gif_i].url,
+                                     0, 0);
+                        L.gifs = 0;
+                    } else if(e == IE_GIF || e == IE_SEARCH){
+                        gif_prompt(&L);
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.gifs = 0;
+                    }
+                    continue;
+                }
                 if(L.sel){
                     if(e == IE_UP || e == IE_DOWN){
                         const message *m = store_message_step(
@@ -2313,6 +2411,8 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_STATUS){
                     L.status_menu = 1;
                     L.status_i = 0;
+                } else if(e == IE_GIF){
+                    if(L.focus == 2 && v.active) gif_prompt(&L);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -2329,6 +2429,7 @@ int screen_main_run(app_state *st){
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
         if(L.profile) draw_profile(&L);
+        if(L.gifs) draw_gifs(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

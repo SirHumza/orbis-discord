@@ -40,6 +40,7 @@ rest of the feature set are the next milestones.
 | Presence: L3 status picker (online/idle/dnd/invisible) via gateway op 3 | Done | host tests, PS4 elf |
 | Member profiles: CROSS menu card with avatar, tag, joined date, bot badge | Done | PS4 elf |
 | Custom emoji picker: guild emoji row in the reaction picker, sends name:id | Done | host tests, PS4 elf |
+| GIF picker: Tenor search/trending grid (touchpad), CROSS sends the GIF link | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -56,7 +57,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (142 checks) + fixtures
+tests/        host test suite (144 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -105,7 +106,7 @@ Phase 2, messaging parity:
 - [x] Stickers: PNG/APNG rendered, GIF first frame, Lottie name fallback
 - [x] Reaction interaction: quick-reaction picker with REST PUT/DELETE
 - [x] Custom emoji picker (guild emoji row in the reaction picker)
-- [ ] GIF picker
+- [x] GIF picker (Tenor search/trending grid, CROSS sends the GIF link)
 - [x] Reply previews: referenced-message preview rows, preserved across edits
 - [x] Reply send (REST), own-message edit/delete via SQUARE-selected action menu
 - [x] Pins overlay (L2) with jump-to-message

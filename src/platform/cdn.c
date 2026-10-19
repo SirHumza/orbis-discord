@@ -7,9 +7,11 @@
 
 #define CDN_HOST "cdn.discordapp.com"
 #define MEDIA_HOST "media.discordapp.net"
+#define TENOR_MEDIA_HOST "media.tenor.com"
 
 static http *g_cdn;
 static http *g_media;
+static http *g_tenor_media;
 
 static int cdn_fetch(const char *url, unsigned char **out, size_t *len,
                      void *ud){
@@ -29,6 +31,10 @@ static int cdn_fetch(const char *url, unsigned char **out, size_t *len,
     } else if(hlen == strlen(MEDIA_HOST) && !strncmp(rest, MEDIA_HOST, hlen)){
         host = MEDIA_HOST;
         client = &g_media;
+    } else if(hlen == strlen(TENOR_MEDIA_HOST) &&
+              !strncmp(rest, TENOR_MEDIA_HOST, hlen)){
+        host = TENOR_MEDIA_HOST;
+        client = &g_tenor_media;
     } else {
         return -1;
     }
