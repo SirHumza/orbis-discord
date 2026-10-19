@@ -112,6 +112,7 @@ int rest_pump(rest *r, uint64_t now_ms){
         }
         if(resp.status == 429){
             r->blocked_until = now_ms + retry_after_ms(resp.body);
+            if(q->cb) q->cb(429, resp.body, q->ud);
             http_resp_free(&resp);
             continue;
         }

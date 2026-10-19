@@ -17,7 +17,7 @@
 typedef int (*mv_measure_fn)(void *ud, const char *s, size_t len);
 
 typedef struct {
-    const message *m;   /* NULL for day separator rows */
+    const message *m;   /* separator rows point at the day's first message */
     int is_sep;
     int author;         /* draw the author header on this row */
     int off;            /* byte offset into m->content */

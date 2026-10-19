@@ -152,7 +152,7 @@ int mv_build(mv_layout *L, const message *head, int width_px,
         uint64_t day = mv_day(t);
         int grouped = m->is_grouped;
         if(!have_day || day != prev_day){
-            push_line(L, NULL, 1, 0, 0, 0, y);
+            push_line(L, m, 1, 0, 0, 0, y);
             y += MV_SEP_H;
             prev_day = day;
             have_day = 1;

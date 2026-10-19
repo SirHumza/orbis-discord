@@ -73,10 +73,13 @@ typedef struct {
     uint64_t guilds_retry_at;
     uint64_t chan_guild;
     int chan_pending;
+    uint64_t chan_retry_at;
     uint64_t member_guild;
     int member_pending;
+    uint64_t member_retry_at;
     int dms_loaded;
     int dms_pending;
+    uint64_t dms_retry_at;
     nav gn, cn;
     int focus;
     char status[64];
@@ -184,6 +187,7 @@ static void channels_cb(int status, const char *body, void *ud){
     if(status != 200){
         log_msg("rest: channels failed (%d)", status);
         L->chan_guild = 0;
+        L->chan_retry_at = mono_ms() + 5000;
         free(f);
         return;
     }
@@ -220,8 +224,10 @@ static void channels_cb(int status, const char *body, void *ud){
 static void fetch_guilds(main_ctx *L){
     L->guilds_pending = 1;
     if(rest_send(L->app->rest, "GET", "/api/v9/users/@me/guilds", NULL,
-                 guilds_cb, L) != 0)
+                 guilds_cb, L) != 0){
         L->guilds_pending = 0;
+        L->guilds_retry_at = mono_ms() + 5000;
+    }
 }
 
 static void fetch_channels(main_ctx *L, uint64_t guild_id){
@@ -236,6 +242,7 @@ static void fetch_channels(main_ctx *L, uint64_t guild_id){
     if(rest_send(L->app->rest, "GET", path, NULL, channels_cb, f) != 0){
         L->chan_pending = 0;
         L->chan_guild = 0;
+        L->chan_retry_at = mono_ms() + 5000;
         free(f);
     }
 }
@@ -247,6 +254,7 @@ static void dms_cb(int status, const char *body, void *ud){
     L->dms_pending = 0;
     if(status != 200){
         log_msg("rest: dms failed (%d)", status);
+        L->dms_retry_at = mono_ms() + 5000;
         return;
     }
     v = body ? jl_parse(body, strlen(body)) : NULL;
@@ -281,8 +289,10 @@ static void dms_cb(int status, const char *body, void *ud){
 
 static void fetch_dms(main_ctx *L){
     L->dms_pending = 1;
-    if(rest_get_dm_channels(L->app->rest, dms_cb, L) != 0)
+    if(rest_get_dm_channels(L->app->rest, dms_cb, L) != 0){
         L->dms_pending = 0;
+        L->dms_retry_at = mono_ms() + 5000;
+    }
 }
 
 static void members_cb(int status, const char *body, void *ud){
@@ -293,6 +303,8 @@ static void members_cb(int status, const char *body, void *ud){
     L->member_pending = 0;
     if(status != 200){
         log_msg("rest: members failed (%d)", status);
+        L->member_guild = 0;
+        L->member_retry_at = mono_ms() + 5000;
         free(f);
         return;
     }
@@ -331,6 +343,7 @@ static void fetch_members(main_ctx *L, uint64_t guild_id){
     if(rest_get_guild_members(L->app->rest, guild_id, members_cb, f) != 0){
         L->member_pending = 0;
         L->member_guild = 0;
+        L->member_retry_at = mono_ms() + 5000;
         free(f);
     }
 }
@@ -881,19 +894,23 @@ int screen_main_run(app_state *st){
            now >= L.guilds_retry_at)
             fetch_guilds(&L);
         if(L.up && L.identified && !v.dm && v.gi >= 0 && v.ng > 0 &&
-           !L.chan_pending && L.chan_guild != v.guilds[v.gi]->id){
+           !L.chan_pending && now >= L.chan_retry_at &&
+           L.chan_guild != v.guilds[v.gi]->id){
             L.chan_guild = v.guilds[v.gi]->id;
             fetch_channels(&L, L.chan_guild);
         }
-        if(L.up && L.identified && L.guilds_loaded && !L.dms_loaded && !L.dms_pending)
+        if(L.up && L.identified && L.guilds_loaded && !L.dms_loaded &&
+           !L.dms_pending && now >= L.dms_retry_at)
             fetch_dms(&L);
         if(L.up && L.identified && !v.dm && v.gi >= 0 && v.ng > 0 &&
-           !L.member_pending && L.member_guild != v.guilds[v.gi]->id){
+           !L.member_pending && now >= L.member_retry_at &&
+           L.member_guild != v.guilds[v.gi]->id){
             L.member_guild = v.guilds[v.gi]->id;
             fetch_members(&L, L.member_guild);
         }
 
         rest_pump(st->rest, now);
+        view_build(&L, &v);
 
         if(L.chan_loaded){
             const message *head = store_messages(st->st, L.chan_loaded);

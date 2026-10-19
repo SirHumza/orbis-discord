@@ -82,12 +82,12 @@ TEST(test_rest_ratelimit){
     ASSERT_TRUE(rest_send(r, "POST", "/channels/1/messages", "{\"content\":\"b\"}", cb_count, &calls) == 0);
     ASSERT_TRUE(rest_send(r, "POST", "/channels/1/messages", "{\"content\":\"c\"}", cb_count, &calls) == 0);
     ASSERT_EQ_INT(rest_pump(r, 0), 1);
-    ASSERT_EQ_INT(calls, 0);
+    ASSERT_EQ_INT(calls, 1);
     ASSERT_EQ_INT(rest_pump(r, 50), 0);
-    ASSERT_EQ_INT(calls, 0);
+    ASSERT_EQ_INT(calls, 1);
     mnext(&m);
     ASSERT_EQ_INT(rest_pump(r, 100), 2);
-    ASSERT_EQ_INT(calls, 2);
+    ASSERT_EQ_INT(calls, 3);
     ASSERT_TRUE(strstr(m.capture, "Authorization: tok123") != NULL);
     rest_free(r);
     http_free(h);
@@ -167,6 +167,32 @@ TEST(test_rest_members_and_dms_paths){
     http_free(h);
 }
 
+TEST(test_http_lowercase_content_length){
+    memio m = {0};
+    m.responses[0] = "HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}";
+    http_io io = {mread, mwrite, &m};
+    http *h = http_new(io);
+    http_resp r;
+    ASSERT_EQ_INT(http_request(h, "discord.com", "GET", "/x", NULL, "t", &r), 0);
+    ASSERT_EQ_STR(r.body, "{}");
+    http_resp_free(&r);
+    http_free(h);
+}
+
+TEST(test_http_chunked_body){
+    memio m = {0};
+    m.responses[0] = "HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\n\r\n"
+                     "4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n";
+    http_io io = {mread, mwrite, &m};
+    http *h = http_new(io);
+    http_resp r;
+    ASSERT_EQ_INT(http_request(h, "discord.com", "GET", "/x", NULL, "t", &r), 0);
+    ASSERT_EQ_INT(r.len, 7);
+    ASSERT_EQ_STR(r.body, "{\"a\":1}");
+    http_resp_free(&r);
+    http_free(h);
+}
+
 TEST(test_rest_retry_after_from_json_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{\"retry_after\":0.5}";
@@ -189,5 +215,7 @@ void run_rest_tests(void){
     g_tests_run++; test_rest_get_messages_path();
     g_tests_run++; test_rest_post_message_utf8_bytes();
     g_tests_run++; test_rest_members_and_dms_paths();
+    g_tests_run++; test_http_lowercase_content_length();
+    g_tests_run++; test_http_chunked_body();
     g_tests_run++; test_rest_retry_after_from_json_body();
 }

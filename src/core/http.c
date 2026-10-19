@@ -30,15 +30,75 @@ static char *find_hdr_end(char *s, size_t n){
     return NULL;
 }
 
-static size_t header_value_num(const char *hdrs, const char *name){
-    const char *p = hdrs;
-    size_t nl = strlen(name);
-    while((p = strstr(p, name)) != NULL){
-        const char *v = p + nl;
-        while(*v == ':' || *v == ' ') v++;
-        return (size_t)strtoul(v, NULL, 10);
+static int ci_eq(const char *a, const char *b, size_t n){
+    size_t i;
+    for(i = 0; i < n; i++){
+        char x = a[i], y = b[i];
+        if(x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+        if(y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+        if(x != y) return 0;
+    }
+    return 1;
+}
+
+static int ci_contains(const char *hay, const char *needle){
+    size_t nl = strlen(needle), hl = strlen(hay), i;
+    for(i = 0; i + nl <= hl; i++)
+        if(ci_eq(hay + i, needle, nl)) return 1;
+    return 0;
+}
+
+/* Header names are case-insensitive. hdrs/hdr_len cover the status line plus
+ * header block; out is always NUL-terminated. Returns value length. */
+static size_t header_value(const char *hdrs, size_t hdr_len, const char *name,
+                           char *out, size_t cap){
+    size_t nl = strlen(name), pos = 0;
+    if(out && cap) out[0] = 0;
+    while(pos + nl < hdr_len){
+        const char *line = hdrs + pos;
+        const char *eol = strstr(line, "\r\n");
+        const char *v, *ve;
+        size_t n;
+        if(!eol || (size_t)(eol - hdrs) > hdr_len) break;
+        if((size_t)(eol - line) > nl && ci_eq(line, name, nl) && line[nl] == ':'){
+            v = line + nl + 1;
+            ve = eol;
+            while(v < ve && (*v == ' ' || *v == '\t')) v++;
+            while(ve > v && (ve[-1] == ' ' || ve[-1] == '\t')) ve--;
+            n = (size_t)(ve - v);
+            if(out && cap){
+                if(n >= cap) n = cap - 1;
+                memcpy(out, v, n);
+                out[n] = 0;
+            }
+            return n;
+        }
+        pos = (size_t)(eol - hdrs) + 2;
     }
     return 0;
+}
+
+/* Decodes a chunked body in place. Returns decoded length, or (size_t)-1. */
+static size_t dechunk(char *s, size_t n){
+    size_t in = 0, out = 0;
+    while(in < n){
+        char *end;
+        unsigned long sz = strtoul(s + in, &end, 16);
+        if(end == s + in) return (size_t)-1;
+        in = (size_t)(end - s);
+        while(in < n && s[in] != '\n') in++;
+        if(in >= n) return (size_t)-1;
+        in++;
+        if(sz == 0) break;
+        if(sz > n - in) return (size_t)-1;
+        memmove(s + out, s + in, sz);
+        out += sz;
+        in += sz;
+        if(in + 1 < n && s[in] == '\r' && s[in + 1] == '\n') in += 2;
+        else if(in < n && s[in] == '\n') in++;
+        else if(in < n) return (size_t)-1;
+    }
+    return out;
 }
 
 int http_request(http *h, const char *host, const char *method, const char *path,
@@ -91,8 +151,16 @@ int http_request(http *h, const char *host, const char *method, const char *path
     body_off = (size_t)(end - resp) + 4;
     total = len >= body_off ? len - body_off : 0;
     {
-        size_t cl = header_value_num(resp, "Content-Length");
-        if(cl && cl <= total) total = cl;
+        char clbuf[32], te[128];
+        size_t hdr_len = (size_t)(end - resp);
+        if(header_value(resp, hdr_len, "Transfer-Encoding", te, sizeof te) &&
+           ci_contains(te, "chunked")){
+            size_t d = dechunk(resp + body_off, total);
+            if(d != (size_t)-1) total = d;
+        } else if(header_value(resp, hdr_len, "Content-Length", clbuf, sizeof clbuf)){
+            size_t cl = (size_t)strtoul(clbuf, NULL, 10);
+            if(cl <= total) total = cl;
+        }
     }
     out->body = malloc(total + 1);
     if(!out->body){ free(resp); return -4; }

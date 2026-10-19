@@ -96,7 +96,9 @@ TEST(test_msgview_day_separator){
     mv_init(&L);
     ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 6);
     ASSERT_EQ_INT(L.lines[0].is_sep, 1);
+    ASSERT_TRUE(L.lines[0].m == &a);
     ASSERT_EQ_INT(L.lines[3].is_sep, 1);
+    ASSERT_TRUE(L.lines[3].m == &b);
     mv_free(&L);
 }
 
