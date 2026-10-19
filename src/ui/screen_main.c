@@ -22,11 +22,13 @@
 #include "../model/perm.h"
 #include "../model/snowflake.h"
 #include "../model/tenor.h"
+#include "../model/voice.h"
 #include "../image.h"
 #include "../platform/input.h"
 #include "../platform/ime.h"
 #include "../platform/sound.h"
 #include "../platform/tenor_net.h"
+#include "../platform/voice_net.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -173,6 +175,21 @@ typedef struct {
     thread_item tview_list[16];
     uint64_t thread_chan;
     int thread_jump;
+    int voice_state;
+    ws_t vws;
+    int vsock;
+    uint64_t voice_chan;
+    uint64_t voice_guild;
+    uint64_t voice_ssrc;
+    uint64_t voice_started;
+    uint64_t voice_hb_at;
+    uint64_t voice_discover_at;
+    int voice_hb_ms;
+    int voice_modes;
+    int voice_port;
+    char voice_ip[64];
+    char voice_session[128];
+    char voice_token[256];
     uint64_t badge_rev;
     uint64_t badge_last_read;
     int badge_n;
@@ -1049,6 +1066,142 @@ static void tview_join(main_ctx *L){
     L->focus = 1;
 }
 
+static void voice_reset(main_ctx *L, int announce){
+    if(!L->voice_state) return;
+    ws_close(&L->vws);
+    if(L->vsock >= 0){
+        voice_udp_close(L->vsock);
+        L->vsock = -1;
+    }
+    L->voice_state = 0;
+    L->voice_chan = 0;
+    L->voice_guild = 0;
+    L->voice_ssrc = 0;
+    L->voice_hb_ms = 0;
+    L->voice_hb_at = 0;
+    L->voice_modes = 0;
+    if(announce) set_status(L, "Voice disconnected");
+}
+
+static void voice_fail(main_ctx *L, const char *why){
+    log_msg("voice: %s", why);
+    set_status(L, why);
+    voice_reset(L, 0);
+}
+
+static void voice_leave(main_ctx *L){
+    char buf[128];
+    int n;
+    if(!L->voice_state) return;
+    n = voice_state_json(L->voice_guild, 0, buf, sizeof buf);
+    if(n > 0 && L->up) ws_send_text(&L->ws, buf, (size_t)n);
+    voice_reset(L, 1);
+}
+
+static void voice_join(main_ctx *L, uint64_t guild, uint64_t chan){
+    char buf[256];
+    int n;
+    if(L->voice_state && L->voice_chan == chan){
+        voice_leave(L);
+        return;
+    }
+    voice_reset(L, 0);
+    L->voice_chan = chan;
+    L->voice_guild = guild;
+    L->voice_state = 1;
+    L->voice_started = mono_ms();
+    n = voice_state_json(guild, chan, buf, sizeof buf);
+    if(n > 0 && L->up) ws_send_text(&L->ws, buf, (size_t)n);
+    set_status(L, "Joining voice...");
+    log_msg("voice: joining %llu", (unsigned long long)chan);
+}
+
+static void voice_connect(main_ctx *L){
+    gateway *g = L->app->gw;
+    char host[80], key[32], sid[128], tok[256];
+    int port = 0;
+    const char *s, *t, *e;
+    if(L->voice_state != 1 || !g) return;
+    s = gw_voice_session(g);
+    t = gw_voice_token(g);
+    e = gw_voice_endpoint(g);
+    if(!s[0] || !t[0] || !e[0]) return;
+    if(!voice_endpoint_split(e, host, sizeof host, &port)){
+        voice_fail(L, "Voice endpoint invalid");
+        return;
+    }
+    snprintf(sid, sizeof sid, "%s", s);
+    snprintf(tok, sizeof tok, "%s", t);
+    if(gw_voice_guild(g)) L->voice_guild = gw_voice_guild(g);
+    if(gw_voice_channel(g)) L->voice_chan = gw_voice_channel(g);
+    if(ws_client_key(key, sizeof key) <= 0 ||
+       ws_connect(&L->vws, host, port, "/?v=4", key, NULL) != 0){
+        voice_fail(L, "Voice connect failed");
+        return;
+    }
+    snprintf(L->voice_session, sizeof L->voice_session, "%s", sid);
+    snprintf(L->voice_token, sizeof L->voice_token, "%s", tok);
+    L->voice_state = 2;
+    L->voice_started = mono_ms();
+    set_status(L, "Voice handshake...");
+    log_msg("voice: ws connected to %s:%d", host, port);
+}
+
+static void voice_handle(main_ctx *L, const char *json){
+    jl_val_t *v = jl_parse(json, strlen(json));
+    jl_val_t *opv, *d;
+    int op;
+    if(!v) return;
+    opv = jl_obj_get(v, "op");
+    d = jl_obj_get(v, "d");
+    op = opv && opv->type == JL_NUMBER ? (int)opv->num : -1;
+    if(op == 8){
+        jl_val_t *iv = d ? jl_obj_get(d, "heartbeat_interval") : NULL;
+        char buf[512];
+        int n;
+        L->voice_hb_ms = iv && iv->type == JL_NUMBER ? (int)iv->num : 41250;
+        L->voice_hb_at = mono_ms() + (uint64_t)L->voice_hb_ms;
+        n = voice_identify_json(L->voice_guild, gw_self_id(L->app->gw),
+                                L->voice_session, L->voice_token, buf,
+                                sizeof buf);
+        if(n > 0) ws_send_text(&L->vws, buf, (size_t)n);
+        log_msg("voice: hello, identify sent");
+    } else if(op == 2){
+        voice_ready r;
+        unsigned char pkt[80];
+        if(!voice_ready_parse(json, &r)){
+            voice_fail(L, "Voice ready invalid");
+        } else if((L->vsock = voice_udp_open()) < 0){
+            voice_fail(L, "Voice UDP failed");
+        } else if(!voice_discovery_packet(r.ssrc, pkt, sizeof pkt) ||
+                  voice_udp_send(L->vsock, r.ip, r.port, pkt, 74) != 0){
+            voice_fail(L, "Voice discovery failed");
+        } else {
+            L->voice_ssrc = r.ssrc;
+            L->voice_modes = r.modes;
+            L->voice_port = r.port;
+            snprintf(L->voice_ip, sizeof L->voice_ip, "%s", r.ip);
+            L->voice_state = 3;
+            L->voice_discover_at = mono_ms() + 5000;
+            log_msg("voice: ready, discovering %s:%d", r.ip, r.port);
+        }
+    } else if(op == 4){
+        char mode[48];
+        unsigned char key[64];
+        size_t klen = 0;
+        if(voice_session_parse(json, mode, sizeof mode, key, sizeof key,
+                               &klen)){
+            L->voice_state = 5;
+            L->voice_hb_at = mono_ms() + (uint64_t)L->voice_hb_ms;
+            set_status(L, "Voice connected");
+            log_msg("voice: session (%s, %dB key)", mode, (int)klen);
+        } else {
+            voice_fail(L, "Voice session invalid");
+        }
+    }
+    jl_free(v);
+}
+
 typedef struct {
     main_ctx *ctx;
     uint64_t uid;
@@ -1622,6 +1775,7 @@ static void menu_choose(main_ctx *L, const message *m, int item){
 
 static void gw_drop(main_ctx *L, uint64_t now, const char *why){
     app_state *app = L->app;
+    voice_reset(L, 0);
     if(L->up){
         ws_close(&L->ws);
         L->up = 0;
@@ -1699,7 +1853,8 @@ static void view_build(main_ctx *L, frame_view *v){
             if(v->nt < 64) v->text[v->nt++] = cats[c];
             for(i = 0; i < nc && v->nt < 64; i++){
                 const channel *c2 = store_channel(L->app->st, cids[i]);
-                if(!c2 || (c2->type != 0 && c2->type != 15) ||
+                if(!c2 || (c2->type != 0 && c2->type != 15 &&
+                           c2->type != 2) ||
                    c2->parent != cats[c]->id) continue;
                 emitted[i] = 1;
                 if(!cat_collapsed(L, cats[c]->id) && can_view_chan(L, c2))
@@ -1710,7 +1865,7 @@ static void view_build(main_ctx *L, frame_view *v){
             const channel *c2;
             if(emitted[i]) continue;
             c2 = store_channel(L->app->st, cids[i]);
-            if(c2 && (c2->type == 0 || c2->type == 15) &&
+            if(c2 && (c2->type == 0 || c2->type == 15 || c2->type == 2) &&
                can_view_chan(L, c2))
                 v->text[v->nt++] = c2;
         }
@@ -2593,6 +2748,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
     } else if(L->mv.n == 0){
         const char *hint = v->active->type == 15
                                ? "TRIANGLE to browse forum posts"
+                           : v->active->type == 2
+                               ? "CROSS to join voice"
                                : (L->hist_pending ? "Loading messages..."
                                                   : "No messages yet");
         ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2,
@@ -2618,6 +2775,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
             ui_rect(CHAT_X + MSG_PAD, cy + 26, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
         if(v->active && v->active->type == 15)
             snprintf(buf, sizeof buf, "Select a post to reply");
+        else if(v->active && v->active->type == 2)
+            snprintf(buf, sizeof buf, "Voice channel");
         else if(v->active)
             snprintf(buf, sizeof buf, "Message %s%s", v->dm ? "@" : "#",
                      v->active->name);
@@ -2658,6 +2817,7 @@ int screen_main_run(app_state *st){
     input_init();
     memset(&L, 0, sizeof L);
     L.app = st;
+    L.vsock = -1;
     L.recv = malloc(GW_RECV);
     if(!L.recv){
         log_msg("main: recv alloc fail");
@@ -2754,6 +2914,13 @@ int screen_main_run(app_state *st){
                     gw_drop(&L, now, "invalid session");
                     break;
                 }
+                if(ev & GW_EV_VOICE_STATE){
+                    if(L.voice_state == 1 && !gw_voice_channel(g))
+                        voice_fail(&L, "Voice join rejected");
+                    else
+                        voice_connect(&L);
+                }
+                if(ev & GW_EV_VOICE_SERVER) voice_connect(&L);
             }
             if(L.up && L.identified && gw_heartbeat_due(g, now)){
                 if(gw_expired_heartbeat(g)){
@@ -2783,7 +2950,7 @@ int screen_main_run(app_state *st){
             L.last_rev = 0;
             L.mv.n = 0;
             L.mv.height = 0;
-            if(v.active->type != 15)
+            if(v.active->type != 15 && v.active->type != 2)
                 fetch_history(&L, L.chan_loaded, 0);
         }
 
@@ -2806,6 +2973,68 @@ int screen_main_run(app_state *st){
             fetch_members(&L, L.member_guild);
         }
 
+        if(L.voice_state == 1 && now - L.voice_started > 10000)
+            voice_fail(&L, "Voice join timeout");
+        if(L.voice_state >= 2){
+            int vn, vop, vfin, vframes = 0;
+            while(vframes < 16 &&
+                  (vn = ws_recv_frame(&L.vws, L.recv, GW_RECV - 1, &vop,
+                                      &vfin)) != 0){
+                if(vn < 0){
+                    voice_fail(&L, "Voice closed");
+                    break;
+                }
+                vframes++;
+                if(vop == 9){ ws_pong(&L.vws); continue; }
+                if(vop == 8){
+                    voice_fail(&L, "Voice closed");
+                    break;
+                }
+                if(vop != 1) continue;
+                L.recv[vn] = 0;
+                voice_handle(&L, L.recv);
+            }
+            if(L.voice_state == 3){
+                unsigned char pkt[128];
+                char ip[64];
+                int port = 0;
+                int r = voice_udp_recv(L.vsock, pkt, sizeof pkt, ip,
+                                       sizeof ip, &port);
+                if(r > 0 && voice_discovery_parse(pkt, (size_t)r, ip,
+                                                  sizeof ip, &port)){
+                    const char *mode = voice_pick_mode(L.voice_modes);
+                    char buf[256];
+                    int m = voice_select_json(ip, port, mode, buf,
+                                              sizeof buf);
+                    if(m > 0){
+                        ws_send_text(&L.vws, buf, (size_t)m);
+                        L.voice_state = 4;
+                        log_msg("voice: selected %s", mode);
+                    } else {
+                        voice_fail(&L, "Voice select failed");
+                    }
+                } else if(now > L.voice_discover_at){
+                    voice_fail(&L, "Voice discovery timeout");
+                }
+            }
+            if((L.voice_state == 4 || L.voice_state == 5) &&
+               L.voice_hb_ms && now >= L.voice_hb_at){
+                char buf[64];
+                int m = voice_heartbeat_json(now, buf, sizeof buf);
+                if(m > 0) ws_send_text(&L.vws, buf, (size_t)m);
+                L.voice_hb_at = now + (uint64_t)L.voice_hb_ms;
+            }
+            if(L.voice_state == 5){
+                unsigned char pkt[2048];
+                char ip[64];
+                int port = 0, k = 0;
+                while(k++ < 32 &&
+                      voice_udp_recv(L.vsock, pkt, sizeof pkt, ip,
+                                     sizeof ip, &port) > 0){}
+            }
+            if(L.voice_state == 2 && now - L.voice_started > 10000)
+                voice_fail(&L, "Voice handshake timeout");
+        }
         rest_pump(st->rest, now);
         image_tick(now);
         view_build(&L, &v);
@@ -3130,6 +3359,8 @@ int screen_main_run(app_state *st){
                     if(L.focus == 2 && v.active){
                         if(v.active->type == 15){
                             set_status(&L, "Select a post to reply");
+                        } else if(v.active->type == 2){
+                            set_status(&L, "Voice channel");
                         } else if(!can_send_chan(&L, v.active)){
                             set_status(&L, "No permission to send");
                         } else {
@@ -3151,6 +3382,17 @@ int screen_main_run(app_state *st){
                               v.text[v.ci]->type == 15){
                         tview_open(&L, v.text[v.ci]->id,
                                    v.guilds[v.gi]->id);
+                    } else if(L.focus == 1 && v.active &&
+                              v.active->type == 2){
+                        if(!perm_can(chan_perms(&L, v.active),
+                                     PERM_CONNECT_VOICE))
+                            set_status(&L, "No permission to join voice");
+                        else if(L.voice_state &&
+                                L.voice_chan == v.active->id)
+                            voice_leave(&L);
+                        else
+                            voice_join(&L, v.guilds[v.gi]->id,
+                                       v.active->id);
                     }
                 } else if(e == IE_VIEW){
                     if(L.focus == 2 && v.active)
@@ -3181,7 +3423,8 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_GIF){
                     if(L.focus == 2 && v.active) gif_prompt(&L);
                 } else if(e == IE_BACK){
-                    if(L.thread_chan) L.thread_chan = 0;
+                    if(L.voice_state) voice_leave(&L);
+                    else if(L.thread_chan) L.thread_chan = 0;
                     else log_msg("input: back unbound");
                 }
             }

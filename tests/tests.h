@@ -29,5 +29,6 @@ void run_nav_tests(void);
 void run_msgview_tests(void);
 void run_ime_utf8_tests(void);
 void run_perm_tests(void);
+void run_voice_tests(void);
 
 #endif

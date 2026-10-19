@@ -80,10 +80,26 @@ TEST(test_perm_admin_bypass){
     ASSERT_EQ_INT(perm_can(perm_effective(&ch, &gu, 77), PERM_SEND_MESSAGES), 1);
 }
 
+TEST(test_perm_voice){
+    guild gu;
+    channel ch;
+    memset(&gu, 0, sizeof gu);
+    memset(&ch, 0, sizeof ch);
+    gu.id = 10;
+    gu.my_perms = PERM_VIEW_CHANNEL | PERM_CONNECT_VOICE;
+    ch.guild = 10;
+    ASSERT_EQ_INT(perm_can(perm_effective(&ch, &gu, 77), PERM_CONNECT_VOICE), 1);
+    ASSERT_EQ_INT(perm_can(perm_effective(&ch, &gu, 77), PERM_SPEAK_VOICE), 0);
+    add_ow(&ch, 10, 0, 0, PERM_CONNECT_VOICE);
+    ASSERT_EQ_INT(perm_can(perm_effective(&ch, &gu, 77), PERM_CONNECT_VOICE), 0);
+}
+
 void run_perm_tests(void){
     g_tests_run++; test_perm_base();
     g_tests_run++; test_perm_everyone_deny();
     g_tests_run++; test_perm_role_allow_and_member_deny();
     g_tests_run++; test_perm_member_allow_beats_role_deny();
     g_tests_run++; test_perm_admin_bypass();
+    g_tests_run++; test_perm_voice();
 }
+

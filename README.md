@@ -4,10 +4,12 @@ A native Discord client for the PlayStation 4. C99, SDL2, OpenOrbis toolchain,
 statically vendored mbedTLS. No browser, no WebView: the UI is drawn from
 scratch to match the Discord desktop layout pixel for pixel.
 
-Status: **Phase 1 in progress.** The client boots, logs in with the Discord
-mobile app (QR remote auth) or a pasted user token, connects to the gateway,
-and shows the guild/channel shell. Message history, composer, voice and the
-rest of the feature set are the next milestones.
+Status: **WIP (work in progress).** This is a hobby project, not a finished
+client. It boots, logs in with the Discord mobile app (QR remote auth) or a
+pasted user token, connects to the gateway, and implements text messaging,
+DMs, friends, reactions, threads, forums, invites, and settings. Voice and
+mic capture are in progress; screenshare is not started. Nothing has been
+smoke-tested on retail hardware yet.
 
 ## What works today
 
@@ -51,6 +53,7 @@ rest of the feature set are the next milestones.
 | Threads: TRIANGLE lists active threads, CROSS opens one in the channel list | Done | host tests, PS4 elf |
 | Forums: forum channels open a posts overlay, CROSS opens a post as a thread | Done | host tests, PS4 elf |
 | Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
+| Voice join: CROSS on a voice channel runs the voice WS/UDP handshake | Partial (no audio yet) | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -67,7 +70,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (162 checks) + fixtures
+tests/        host test suite (169 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -139,7 +142,8 @@ Phase 2, messaging parity:
 - [x] Forums (browse and open active posts; creating posts is not wired)
 - [x] Settings screen (account/gateway info, sound toggle, logout)
 - [ ] Slash commands, context menus, extra keyboard/pad shortcuts
-- [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback
+- [x] Voice join: gateway op 4, voice WS identify, UDP IP discovery, select_protocol
+- [ ] Voice receive: Opus decode, XChaCha20/XSalsa20 decrypt, per-user playback
 - [ ] Mic capture (sceAudioIn) and input device selection
 - [ ] Screenshare: capture, encode, WebRTC go-live (hardware AVC access TBD)
 
@@ -149,7 +153,9 @@ Phase 2, messaging parity:
   the oversized-READY envelope). Repeated drops hit Discord's identify budget.
 - Gateway frames above 64 KB are reduced to `op/s/t`; a rare oversized
   MESSAGE_CREATE is recovered by refetching history, not live.
-- Voice channels are listed but not joinable yet.
+- Voice joins complete the voice WS/UDP handshake but carry no audio yet;
+  DAVE (E2EE) negotiation is not implemented, so servers that require it
+  will reject the session.
 - Attachments are fetched synchronously from the CDN on first draw, so a slow
   or large image can stall the render loop (HTTP responses are capped at 4 MB).
 - Attachments are capped at 4 per message and embeds at 2; embed fields,

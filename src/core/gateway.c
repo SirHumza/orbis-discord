@@ -21,6 +21,11 @@ struct gateway {
     uint64_t reconnect_at;
     int reconnect_pending;
     int msg_sound;
+    char voice_session[128];
+    char voice_token[256];
+    char voice_endpoint[128];
+    uint64_t voice_guild;
+    uint64_t voice_channel;
     char ack_buf[64];
 };
 
@@ -122,6 +127,48 @@ int gw_state(gateway *g){ return g ? g->state : 0; }
 void gw_force_resume(gateway *g){ if(g) g->state = 2; }
 
 store *gw_store(gateway *g){ return g ? g->st : NULL; }
+
+const char *gw_voice_session(gateway *g){
+    return g ? g->voice_session : "";
+}
+
+uint64_t gw_voice_channel(gateway *g){
+    return g ? g->voice_channel : 0;
+}
+
+uint64_t gw_voice_guild(gateway *g){
+    return g ? g->voice_guild : 0;
+}
+
+const char *gw_voice_token(gateway *g){
+    return g ? g->voice_token : "";
+}
+
+const char *gw_voice_endpoint(gateway *g){
+    return g ? g->voice_endpoint : "";
+}
+
+void gw_set_voice_state(gateway *g, const char *session, uint64_t guild,
+                        uint64_t chan){
+    if(!g) return;
+    snprintf(g->voice_session, sizeof g->voice_session, "%s",
+             session ? session : "");
+    g->voice_guild = guild;
+    g->voice_channel = chan;
+    if(!chan){
+        g->voice_token[0] = 0;
+        g->voice_endpoint[0] = 0;
+    }
+}
+
+void gw_set_voice_server(gateway *g, const char *token, const char *endpoint,
+                         uint64_t guild){
+    if(!g) return;
+    snprintf(g->voice_token, sizeof g->voice_token, "%s", token ? token : "");
+    snprintf(g->voice_endpoint, sizeof g->voice_endpoint, "%s",
+             endpoint ? endpoint : "");
+    if(guild) g->voice_guild = guild;
+}
 
 void gw_on_ready(gateway *g, const char *session_id, const char *name, uint64_t id){
     if(!g) return;

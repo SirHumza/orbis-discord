@@ -358,6 +358,20 @@ static int on_typing(gateway *g, jl_val_t *d){
     return GW_EV_NONE;
 }
 
+static int on_voice_state(gateway *g, jl_val_t *d){
+    uint64_t uid = gw_u64(d, "user_id");
+    if(!uid || uid != gw_self_id(g)) return GW_EV_NONE;
+    gw_set_voice_state(g, gw_string(d, "session_id"), gw_u64(d, "guild_id"),
+                       gw_u64(d, "channel_id"));
+    return GW_EV_VOICE_STATE;
+}
+
+static int on_voice_server(gateway *g, jl_val_t *d){
+    gw_set_voice_server(g, gw_string(d, "token"), gw_string(d, "endpoint"),
+                        gw_u64(d, "guild_id"));
+    return GW_EV_VOICE_SERVER;
+}
+
 int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!g || !t || !d) return GW_EV_NONE;
     if(!strcmp(t, "READY")) return on_ready(g, d);
@@ -373,5 +387,7 @@ int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!strcmp(t, "MESSAGE_REACTION_REMOVE_ALL")) return on_react_clear(g, d);
     if(!strcmp(t, "MESSAGE_REACTION_REMOVE_EMOJI")) return on_react_clear_emoji(g, d);
     if(!strcmp(t, "TYPING_START")) return on_typing(g, d);
+    if(!strcmp(t, "VOICE_STATE_UPDATE")) return on_voice_state(g, d);
+    if(!strcmp(t, "VOICE_SERVER_UPDATE")) return on_voice_server(g, d);
     return GW_EV_NONE;
 }

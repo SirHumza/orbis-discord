@@ -11,6 +11,8 @@
 #define GW_EV_RECONNECT 8
 #define GW_EV_INVALID_SESSION 16
 #define GW_EV_HELLO 32
+#define GW_EV_VOICE_STATE 64
+#define GW_EV_VOICE_SERVER 128
 
 typedef struct gateway gateway;
 
@@ -38,6 +40,15 @@ void gw_on_reconnected(gateway *);
 int gw_ack_expired(gateway *, uint64_t now_ms);
 void gw_on_ready(gateway *, const char *session_id, const char *name, uint64_t id);
 store *gw_store(gateway *);
+const char *gw_voice_session(gateway *);
+uint64_t gw_voice_channel(gateway *);
+uint64_t gw_voice_guild(gateway *);
+const char *gw_voice_token(gateway *);
+const char *gw_voice_endpoint(gateway *);
+void gw_set_voice_state(gateway *, const char *session, uint64_t guild,
+                        uint64_t chan);
+void gw_set_voice_server(gateway *, const char *token, const char *endpoint,
+                         uint64_t guild);
 /* Notification sound state: 2 = mention, 1 = message, 0 = none. */
 void gw_note_msg_sound(gateway *, int mentions);
 int gw_take_msg_sound(gateway *);
