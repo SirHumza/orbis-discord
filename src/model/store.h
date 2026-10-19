@@ -23,6 +23,14 @@ typedef struct {
     int has_color;
 } embed;
 
+#define MSG_MAX_REACT 6
+
+typedef struct {
+    char emoji[32];
+    int count;
+    int me;
+} reaction;
+
 typedef struct message {
     uint64_t id, chan, author_id;
     char author_name[64];
@@ -37,6 +45,8 @@ typedef struct message {
     int natt;
     embed emb[MSG_MAX_EMB];
     int nemb;
+    reaction react[MSG_MAX_REACT];
+    int nreact;
     struct message *next;
 } message;
 
@@ -80,4 +90,8 @@ size_t store_guilds(store *, const guild **out, size_t cap);
 size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);
 void store_set_member_name(store *, uint64_t guild_id, uint64_t user_id, const char *name);
+void store_react_add(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
+void store_react_remove(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
+void store_react_clear(store *, uint64_t chan, uint64_t msg);
+void store_react_clear_emoji(store *, uint64_t chan, uint64_t msg, const char *emoji);
 #endif

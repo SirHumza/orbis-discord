@@ -656,6 +656,23 @@ static void draw_messages(main_ctx *L){
                 fb[len] = 0;
                 ui_text(x0 + 16, y + 2, fb, UI_TEXT_DIM, 14);
             }
+        } else if(ln->react >= 0){
+            const reaction *rs = ln->m->react;
+            int r, rx = CHAT_X + MSG_PAD + MSG_INDENT;
+            int rmax = CHAT_X + CHAT_W - MSG_PAD;
+            for(r = 0; r < ln->m->nreact && rx < rmax - 40; r++){
+                char cnt[16];
+                int ew, cw, w;
+                ew = ui_text_width(rs[r].emoji, 14);
+                snprintf(cnt, sizeof cnt, "%d", rs[r].count);
+                cw = ui_text_width(cnt, 12);
+                w = 10 + ew + 6 + cw + 10;
+                ui_rrect(rx, y + 2, w, 22, 11,
+                         rs[r].me ? UI_BLURPLE : UI_CHANNEL_BG);
+                ui_text(rx + 10, y + 4, rs[r].emoji, UI_TEXT, 14);
+                ui_text(rx + 10 + ew + 6, y + 6, cnt, UI_TEXT_DIM, 12);
+                rx += w + 6;
+            }
         } else if(ln->author){
             char tbuf[8];
             int nw, tx;

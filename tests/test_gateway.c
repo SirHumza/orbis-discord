@@ -110,6 +110,32 @@ TEST(test_events_presence_updates_member){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_reactions){
+    setup();
+    feed("{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{\"session_id\":\"x\",\"user\":{\"id\":\"5\",\"username\":\"me\"},\"guilds\":[],\"private_channels\":[]}}");
+    feed("{\"op\":0,\"s\":2,\"t\":\"MESSAGE_CREATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"x\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_TRUE(feed("{\"op\":0,\"s\":3,\"t\":\"MESSAGE_REACTION_ADD\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\",\"user_id\":\"7\",\"emoji\":{\"id\":\"\",\"name\":\"fire\"}}}") & GW_EV_MESSAGE);
+    ASSERT_EQ_INT(store_messages(s, 100)->nreact, 1);
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].count, 1);
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].me, 0);
+    feed("{\"op\":0,\"s\":4,\"t\":\"MESSAGE_REACTION_ADD\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\",\"user_id\":\"5\",\"emoji\":{\"id\":\"\",\"name\":\"fire\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].count, 2);
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].me, 1);
+    feed("{\"op\":0,\"s\":5,\"t\":\"MESSAGE_UPDATE\",\"d\":{\"id\":\"20\",\"channel_id\":\"100\",\"content\":\"edited\",\"edited_timestamp\":\"2026-10-19T00:00:00.000000+00:00\",\"author\":{\"id\":\"7\",\"username\":\"bob\"}}}");
+    ASSERT_EQ_STR(store_messages(s, 100)->content, "edited");
+    ASSERT_EQ_INT(store_messages(s, 100)->nreact, 1);
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].count, 2);
+    feed("{\"op\":0,\"s\":6,\"t\":\"MESSAGE_REACTION_REMOVE\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\",\"user_id\":\"7\",\"emoji\":{\"id\":\"\",\"name\":\"fire\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->react[0].count, 1);
+    feed("{\"op\":0,\"s\":7,\"t\":\"MESSAGE_REACTION_REMOVE_EMOJI\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\",\"emoji\":{\"id\":\"\",\"name\":\"fire\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->nreact, 0);
+    feed("{\"op\":0,\"s\":8,\"t\":\"MESSAGE_REACTION_ADD\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\",\"user_id\":\"7\",\"emoji\":{\"id\":\"\",\"name\":\"cat\"}}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->nreact, 1);
+    feed("{\"op\":0,\"s\":9,\"t\":\"MESSAGE_REACTION_REMOVE_ALL\",\"d\":{\"channel_id\":\"100\",\"message_id\":\"20\"}}");
+    ASSERT_EQ_INT(store_messages(s, 100)->nreact, 0);
+    gw_free(g); store_free(s);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -120,4 +146,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_malformed();
     g_tests_run++; test_events_seq_tracks_dispatch();
     g_tests_run++; test_events_presence_updates_member();
+    g_tests_run++; test_events_reactions();
 }

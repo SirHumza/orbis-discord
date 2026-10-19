@@ -152,6 +152,25 @@ TEST(test_msgview_embed_rows){
     mv_free(&L);
 }
 
+TEST(test_msgview_reaction_row){
+    message a = mkmsg(1500000000000ULL, 1, 7, "hi", 0);
+    mv_layout L;
+    a.nreact = 2;
+    snprintf(a.react[0].emoji, sizeof a.react[0].emoji, "fire");
+    a.react[0].count = 2;
+    a.react[0].me = 1;
+    snprintf(a.react[1].emoji, sizeof a.react[1].emoji, "cat");
+    a.react[1].count = 1;
+    mv_init(&L);
+    ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 4);
+    ASSERT_EQ_INT(L.lines[2].react, -1);
+    ASSERT_EQ_INT(L.lines[3].react, 1);
+    ASSERT_EQ_INT(L.lines[3].att_h, MV_REACT_H);
+    ASSERT_EQ_INT(L.height,
+                  MV_SEP_H + MV_LINE_H + MV_LINE_H + MV_REACT_H + 4 + MV_GROUP_GAP);
+    mv_free(&L);
+}
+
 TEST(test_msgview_time_and_day_strings){
     char buf[64];
     mv_time_str(1420070400000ULL, buf, sizeof buf);
@@ -175,5 +194,6 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_height_accounts_for_separator_and_gap();
     g_tests_run++; test_msgview_attachment_rows();
     g_tests_run++; test_msgview_embed_rows();
+    g_tests_run++; test_msgview_reaction_row();
     g_tests_run++; test_msgview_time_and_day_strings();
 }

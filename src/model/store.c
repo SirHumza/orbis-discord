@@ -77,6 +77,8 @@ void store_put_message(store *st, const message *in){
         memcpy(cur->att, in->att, sizeof cur->att);
         cur->nemb = in->nemb;
         memcpy(cur->emb, in->emb, sizeof cur->emb);
+        cur->nreact = in->nreact;
+        memcpy(cur->react, in->react, sizeof cur->react);
         st->rev++;
         return;
     }
@@ -128,6 +130,84 @@ void store_del_pending(store *st, uint64_t chan, uint64_t nonce){
 }
 
 uint64_t store_revision(store *st){ return st ? st->rev : 0; }
+
+static message *msgs_find(store *st, uint64_t chan, uint64_t id){
+    chan_msgs *c = msgs_for(st, chan, 0);
+    message *m;
+    if(!c) return NULL;
+    for(m = c->head; m && m->id != id; m = m->next){}
+    return m;
+}
+
+void store_react_add(store *st, uint64_t chan, uint64_t msg, const char *emoji,
+                     int me){
+    message *m;
+    int i;
+    if(!st || !emoji || !*emoji) return;
+    m = msgs_find(st, chan, msg);
+    if(!m) return;
+    for(i = 0; i < m->nreact; i++){
+        if(strcmp(m->react[i].emoji, emoji) == 0){
+            m->react[i].count++;
+            if(me) m->react[i].me = 1;
+            st->rev++;
+            return;
+        }
+    }
+    if(m->nreact >= MSG_MAX_REACT) return;
+    snprintf(m->react[m->nreact].emoji, sizeof m->react[0].emoji, "%s", emoji);
+    m->react[m->nreact].count = 1;
+    m->react[m->nreact].me = me;
+    m->nreact++;
+    st->rev++;
+}
+
+void store_react_remove(store *st, uint64_t chan, uint64_t msg,
+                        const char *emoji, int me){
+    message *m;
+    int i;
+    if(!st || !emoji || !*emoji) return;
+    m = msgs_find(st, chan, msg);
+    if(!m) return;
+    for(i = 0; i < m->nreact; i++){
+        if(strcmp(m->react[i].emoji, emoji) == 0){
+            m->react[i].count--;
+            if(me) m->react[i].me = 0;
+            if(m->react[i].count <= 0){
+                m->nreact--;
+                m->react[i] = m->react[m->nreact];
+            }
+            st->rev++;
+            return;
+        }
+    }
+}
+
+void store_react_clear(store *st, uint64_t chan, uint64_t msg){
+    message *m;
+    if(!st) return;
+    m = msgs_find(st, chan, msg);
+    if(!m || m->nreact == 0) return;
+    m->nreact = 0;
+    st->rev++;
+}
+
+void store_react_clear_emoji(store *st, uint64_t chan, uint64_t msg,
+                             const char *emoji){
+    message *m;
+    int i;
+    if(!st || !emoji || !*emoji) return;
+    m = msgs_find(st, chan, msg);
+    if(!m) return;
+    for(i = 0; i < m->nreact; i++){
+        if(strcmp(m->react[i].emoji, emoji) == 0){
+            m->nreact--;
+            m->react[i] = m->react[m->nreact];
+            st->rev++;
+            return;
+        }
+    }
+}
 
 const message *store_messages(store *st, uint64_t chan){
     chan_msgs *c = st ? msgs_for(st, chan, 0) : NULL;

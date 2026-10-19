@@ -20,6 +20,10 @@ static int jint(jl_val_t *v){
     return v && v->type == JL_NUMBER ? (int)v->num : 0;
 }
 
+static int jbool(jl_val_t *v){
+    return v && v->type == JL_BOOL ? (int)v->num : 0;
+}
+
 int msg_from_json(message *m, jl_val_t *o){
     jl_val_t *a, *atts, *e;
     int i;
@@ -86,6 +90,22 @@ int msg_from_json(message *m, jl_val_t *o){
                     e->color = 0xFF000000u | ((uint32_t)col->num & 0xFFFFFFu);
                 }
                 if(e->title[0] || e->desc[0] || e->image_url[0]) m->nemb++;
+            }
+        }
+    }
+    {
+        jl_val_t *rs = field(o, "reactions");
+        if(rs && rs->type == JL_ARRAY){
+            for(i = 0; i < rs->count && m->nreact < MSG_MAX_REACT; i++){
+                jl_val_t *rj = jl_arr_at(rs, i);
+                reaction *r = &m->react[m->nreact];
+                jl_val_t *em = field(rj, "emoji");
+                int c = jint(field(rj, "count"));
+                snprintf(r->emoji, sizeof r->emoji, "%s", jstr(field(em, "name")));
+                if(!r->emoji[0]) continue;
+                r->count = c > 0 ? c : 1;
+                r->me = jbool(field(rj, "me"));
+                m->nreact++;
             }
         }
     }

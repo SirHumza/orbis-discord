@@ -85,6 +85,28 @@ TEST(test_msgjson_embed_thumbnail_fallback){
     jl_free(v);
 }
 
+TEST(test_msgjson_reactions){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"reactions\":["
+        "{\"count\":3,\"me\":true,\"emoji\":{\"id\":\"\",\"name\":\"fire\"}},"
+        "{\"count\":1,\"me\":false,\"emoji\":{\"id\":\"999\",\"name\":\"pepe\"}},"
+        "{\"count\":0,\"me\":false,\"emoji\":{\"id\":\"\",\"name\":\"zero\"}},"
+        "{\"count\":5,\"me\":true,\"emoji\":{\"id\":\"\",\"name\":\"\"}}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.nreact, 3);
+    ASSERT_EQ_STR(m.react[0].emoji, "fire");
+    ASSERT_EQ_INT(m.react[0].count, 3);
+    ASSERT_EQ_INT(m.react[0].me, 1);
+    ASSERT_EQ_STR(m.react[1].emoji, "pepe");
+    ASSERT_EQ_INT(m.react[1].me, 0);
+    ASSERT_EQ_STR(m.react[2].emoji, "zero");
+    ASSERT_EQ_INT(m.react[2].count, 1);
+    jl_free(v);
+}
+
 TEST(test_msgjson_requires_id_and_channel){
     const char *json = "{\"id\":\"5\",\"content\":\"x\"}";
     jl_val_t *v = jl_parse(json, strlen(json));
@@ -99,5 +121,6 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_edit_flag_and_svg();
     g_tests_run++; test_msgjson_embed_with_image();
     g_tests_run++; test_msgjson_embed_thumbnail_fallback();
+    g_tests_run++; test_msgjson_reactions();
     g_tests_run++; test_msgjson_requires_id_and_channel();
 }

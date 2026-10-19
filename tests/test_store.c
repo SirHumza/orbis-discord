@@ -169,6 +169,39 @@ TEST(test_store_revision_tracks_mutations){
     store_free(st);
 }
 
+TEST(test_store_reactions){
+    store *st = store_new();
+    message a = {.id = 10, .chan = 1, .author_id = 7};
+    uint64_t r0;
+    strcpy(a.content, "react to me");
+    store_put_message(st, &a);
+    r0 = store_revision(st);
+    store_react_add(st, 1, 10, "\xF0\x9F\x91\x8D", 0);
+    store_react_add(st, 1, 10, "\xF0\x9F\x91\x8D", 1);
+    ASSERT_TRUE(store_revision(st) != r0);
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 1);
+    ASSERT_EQ_INT(store_messages(st, 1)->react[0].count, 2);
+    ASSERT_EQ_INT(store_messages(st, 1)->react[0].me, 1);
+    store_react_add(st, 1, 10, "fire", 0);
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 2);
+    store_react_remove(st, 1, 10, "\xF0\x9F\x91\x8D", 0);
+    ASSERT_EQ_INT(store_messages(st, 1)->react[0].count, 1);
+    store_react_remove(st, 1, 10, "\xF0\x9F\x91\x8D", 1);
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 1);
+    ASSERT_EQ_STR(store_messages(st, 1)->react[0].emoji, "fire");
+    store_react_clear_emoji(st, 1, 10, "fire");
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 0);
+    store_react_add(st, 1, 10, "cat", 0);
+    store_react_clear(st, 1, 10);
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 0);
+    store_react_add(st, 1, 999, "ghost", 0);
+    store_react_remove(st, 1, 999, "ghost", 0);
+    store_react_clear(st, 1, 999);
+    store_react_add(st, 777, 10, "nope", 0);
+    ASSERT_EQ_INT(store_messages(st, 1)->nreact, 0);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -181,4 +214,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_utf8();
     g_tests_run++; test_store_channels_for_guild();
     g_tests_run++; test_store_revision_tracks_mutations();
+    g_tests_run++; test_store_reactions();
 }

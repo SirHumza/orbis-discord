@@ -118,6 +118,10 @@ static int on_message_update(gateway *g, jl_val_t *d){
             m.nemb = old->nemb;
             memcpy(m.emb, old->emb, sizeof m.emb);
         }
+        if(m.nreact == 0){
+            m.nreact = old->nreact;
+            memcpy(m.react, old->react, sizeof m.react);
+        }
     }
     m.has_edit = 1;
     store_put_message(gw_store(g), &m);
@@ -167,6 +171,36 @@ static int on_member_update(gateway *g, jl_val_t *d){
     return GW_EV_PRESENCE;
 }
 
+static int on_react(gateway *g, jl_val_t *d, int add){
+    uint64_t chan = gw_u64(d, "channel_id");
+    uint64_t msg = gw_u64(d, "message_id");
+    uint64_t user = gw_u64(d, "user_id");
+    const char *emoji = gw_string(gw_obj(d, "emoji"), "name");
+    int me;
+    if(!chan || !msg || !emoji[0]) return GW_EV_NONE;
+    me = user && user == gw_self_id(g);
+    if(add) store_react_add(gw_store(g), chan, msg, emoji, me);
+    else store_react_remove(gw_store(g), chan, msg, emoji, me);
+    return GW_EV_MESSAGE;
+}
+
+static int on_react_clear(gateway *g, jl_val_t *d){
+    uint64_t chan = gw_u64(d, "channel_id");
+    uint64_t msg = gw_u64(d, "message_id");
+    if(!chan || !msg) return GW_EV_NONE;
+    store_react_clear(gw_store(g), chan, msg);
+    return GW_EV_MESSAGE;
+}
+
+static int on_react_clear_emoji(gateway *g, jl_val_t *d){
+    uint64_t chan = gw_u64(d, "channel_id");
+    uint64_t msg = gw_u64(d, "message_id");
+    const char *emoji = gw_string(gw_obj(d, "emoji"), "name");
+    if(!chan || !msg || !emoji[0]) return GW_EV_NONE;
+    store_react_clear_emoji(gw_store(g), chan, msg, emoji);
+    return GW_EV_MESSAGE;
+}
+
 int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!g || !t || !d) return GW_EV_NONE;
     if(!strcmp(t, "READY")) return on_ready(g, d);
@@ -177,5 +211,9 @@ int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!strcmp(t, "PRESENCE_UPDATE")) return on_presence(g, d);
     if(!strcmp(t, "CHANNEL_CREATE") || !strcmp(t, "CHANNEL_UPDATE")) return on_channel_put(g, d);
     if(!strcmp(t, "GUILD_MEMBER_UPDATE")) return on_member_update(g, d);
+    if(!strcmp(t, "MESSAGE_REACTION_ADD")) return on_react(g, d, 1);
+    if(!strcmp(t, "MESSAGE_REACTION_REMOVE")) return on_react(g, d, 0);
+    if(!strcmp(t, "MESSAGE_REACTION_REMOVE_ALL")) return on_react_clear(g, d);
+    if(!strcmp(t, "MESSAGE_REACTION_REMOVE_EMOJI")) return on_react_clear_emoji(g, d);
     return GW_EV_NONE;
 }

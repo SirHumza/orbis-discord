@@ -82,6 +82,7 @@ static int push_line(mv_layout *L, const message *m, int is_sep, int author,
     ln->att_h = 0;
     ln->emb = -1;
     ln->emb_kind = 0;
+    ln->react = -1;
     return 1;
 }
 
@@ -230,6 +231,12 @@ int mv_build(mv_layout *L, const message *head, int width_px,
                 L->lines[L->n - 1].att_h = th;
                 y += th + 6;
             }
+        }
+        if(m->nreact > 0){
+            push_line(L, m, 0, 0, 0, 0, y);
+            L->lines[L->n - 1].react = 1;
+            L->lines[L->n - 1].att_h = MV_REACT_H;
+            y += MV_REACT_H + 4;
         }
         y += MV_GROUP_GAP;
     }
