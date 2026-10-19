@@ -2,6 +2,7 @@
 #include "gateway.h"
 #include "snowflake.h"
 #include "store.h"
+#include "../model/cdnurl.h"
 #include "../model/msgjson.h"
 #include <string.h>
 #include <stdio.h>
@@ -33,6 +34,7 @@ static void put_guild(store *st, jl_val_t *gobj){
     memset(&gu, 0, sizeof gu);
     gu.id = gid;
     cp(gu.name, sizeof gu.name, gw_string(gobj, "name"));
+    cdn_guild_icon_url(gu.icon_url, sizeof gu.icon_url, gid, gw_string(gobj, "icon"));
     store_put_guild(st, &gu);
 
     chans = gw_obj(gobj, "channels");
@@ -61,6 +63,8 @@ static void put_guild(store *st, jl_val_t *gobj){
         if(!mem.user) continue;
         mem.guild = gid;
         cp(mem.name, sizeof mem.name, gw_string(u, "username"));
+        cdn_avatar_url(mem.avatar_url, sizeof mem.avatar_url, mem.user,
+                       gw_string(u, "avatar"));
         mem.online = gw_string(m, "status")[0] != 0 && strcmp(gw_string(m, "status"), "offline") != 0;
         store_put_member(st, &mem);
     }

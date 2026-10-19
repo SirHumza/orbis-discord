@@ -1,4 +1,5 @@
 #include "msgjson.h"
+#include "cdnurl.h"
 #include "snowflake.h"
 #include <stdio.h>
 #include <string.h>
@@ -31,6 +32,11 @@ int msg_from_json(message *m, jl_val_t *o){
     m->author_id = jid(field(a, "id"));
     snprintf(m->author_name, sizeof m->author_name, "%s",
              jstr(field(a, "username")));
+    {
+        jl_val_t *av = field(a, "avatar");
+        cdn_avatar_url(m->author_avatar, sizeof m->author_avatar, m->author_id,
+                       av && av->type == JL_STRING ? av->str : "");
+    }
     snprintf(m->content, sizeof m->content, "%s", jstr(field(o, "content")));
     e = field(o, "edited_timestamp");
     if(e && e->type == JL_STRING && e->str[0]) m->has_edit = 1;

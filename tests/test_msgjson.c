@@ -5,7 +5,7 @@
 TEST(test_msgjson_attachments_and_author){
     const char *json =
         "{\"id\":\"123456789012345678\",\"channel_id\":\"700\","
-        "\"content\":\"look\",\"author\":{\"id\":\"42\",\"username\":\"bob\"},"
+        "\"content\":\"look\",\"author\":{\"id\":\"42\",\"username\":\"bob\",\"avatar\":\"h1\"},"
         "\"attachments\":["
         "{\"filename\":\"cat.png\",\"content_type\":\"image/png\",\"size\":1234,"
         "\"url\":\"https://cdn.discordapp.com/attachments/1/2/cat.png\","
@@ -20,6 +20,7 @@ TEST(test_msgjson_attachments_and_author){
     ASSERT_EQ_STR(m.content, "look");
     ASSERT_EQ_INT(m.author_id, 42);
     ASSERT_EQ_STR(m.author_name, "bob");
+    ASSERT_EQ_STR(m.author_avatar, "https://cdn.discordapp.com/avatars/42/h1.png?size=64");
     ASSERT_EQ_INT(m.natt, 2);
     ASSERT_EQ_INT(m.att[0].image, 1);
     ASSERT_EQ_INT(m.att[0].w, 400);

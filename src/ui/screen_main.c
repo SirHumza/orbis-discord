@@ -17,6 +17,7 @@
 #include "../core/jsonlite.h"
 #include "../core/clock.h"
 #include "../core/log.h"
+#include "../model/cdnurl.h"
 #include "../model/msgjson.h"
 #include "../model/snowflake.h"
 #include "../image.h"
@@ -52,6 +53,7 @@
 #define COMPOSER_H 56
 #define CHAT_VIEW_H (CHAT_H - COMPOSER_H)
 #define MSG_PAD 16
+#define MSG_INDENT 48
 
 typedef struct {
     const guild *guilds[64];
@@ -165,12 +167,15 @@ static void guilds_cb(int status, const char *body, void *ud){
         jl_val_t *o = jl_arr_at(v, i);
         jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
         jl_val_t *name = o ? jl_obj_get(o, "name") : NULL;
+        jl_val_t *icon = o ? jl_obj_get(o, "icon") : NULL;
         guild g;
         if(!id || id->type != JL_STRING) continue;
         memset(&g, 0, sizeof g);
         g.id = sn_parse(id->str);
         if(name && name->type == JL_STRING)
             snprintf(g.name, sizeof g.name, "%s", name->str);
+        cdn_guild_icon_url(g.icon_url, sizeof g.icon_url, g.id,
+                           icon && icon->type == JL_STRING ? icon->str : "");
         store_put_guild(L->app->st, &g);
     }
     log_msg("rest: %d guilds", v->count);
@@ -265,6 +270,7 @@ static void dms_cb(int status, const char *body, void *ud){
             jl_val_t *type = o ? jl_obj_get(o, "type") : NULL;
             jl_val_t *name = o ? jl_obj_get(o, "name") : NULL;
             jl_val_t *rec = o ? jl_obj_get(o, "recipients") : NULL;
+            jl_val_t *icon = o ? jl_obj_get(o, "icon") : NULL;
             channel ch;
             if(!id || id->type != JL_STRING) continue;
             memset(&ch, 0, sizeof ch);
@@ -278,6 +284,18 @@ static void dms_cb(int status, const char *body, void *ud){
                 jl_val_t *un = r0 ? jl_obj_get(r0, "username") : NULL;
                 if(un && un->type == JL_STRING)
                     snprintf(ch.name, sizeof ch.name, "%s", un->str);
+            }
+            if(ch.type == 3)
+                cdn_channel_icon_url(ch.avatar_url, sizeof ch.avatar_url, ch.id,
+                                     icon && icon->type == JL_STRING ? icon->str : "");
+            else if(rec && rec->type == JL_ARRAY && rec->count == 1){
+                jl_val_t *r0 = jl_arr_at(rec, 0);
+                jl_val_t *rid = r0 ? jl_obj_get(r0, "id") : NULL;
+                jl_val_t *rav = r0 ? jl_obj_get(r0, "avatar") : NULL;
+                if(rid && rid->type == JL_STRING)
+                    cdn_avatar_url(ch.avatar_url, sizeof ch.avatar_url,
+                                   sn_parse(rid->str),
+                                   rav && rav->type == JL_STRING ? rav->str : "");
             }
             store_put_channel(L->app->st, &ch);
         }
@@ -315,6 +333,7 @@ static void members_cb(int status, const char *body, void *ud){
             jl_val_t *u = o ? jl_obj_get(o, "user") : NULL;
             jl_val_t *uid = u ? jl_obj_get(u, "id") : NULL;
             jl_val_t *uname = u ? jl_obj_get(u, "username") : NULL;
+            jl_val_t *uav = u ? jl_obj_get(u, "avatar") : NULL;
             jl_val_t *nick = o ? jl_obj_get(o, "nick") : NULL;
             member mem;
             if(!uid || uid->type != JL_STRING) continue;
@@ -325,6 +344,8 @@ static void members_cb(int status, const char *body, void *ud){
                 snprintf(mem.name, sizeof mem.name, "%s", nick->str);
             else if(uname && uname->type == JL_STRING)
                 snprintf(mem.name, sizeof mem.name, "%s", uname->str);
+            cdn_avatar_url(mem.avatar_url, sizeof mem.avatar_url, mem.user,
+                           uav && uav->type == JL_STRING ? uav->str : "");
             store_put_member(L->app->st, &mem);
         }
         log_msg("rest: %d members for %llu", v->count,
@@ -495,7 +516,8 @@ static void scroll_clamp(main_ctx *L){
 static void view_rebuild(main_ctx *L, uint64_t chan){
     int old_h = L->mv.height;
     const message *head = store_messages(L->app->st, chan);
-    mv_build(&L->mv, head, CHAT_W - 2 * MSG_PAD, measure_adapter, NULL);
+    mv_build(&L->mv, head, CHAT_W - 2 * MSG_PAD - MSG_INDENT,
+             measure_adapter, NULL);
     if(L->prepend && !L->stick) L->top_px += L->mv.height - old_h;
     L->prepend = 0;
     if(L->stick) L->top_px = L->mv.height;
@@ -559,9 +581,12 @@ static void draw_members(main_ctx *L, const frame_view *v){
     y += 22;
     for(i = 0; i < n && y < SCR_H - 40; i++){
         if(!ms[i]->online) continue;
-        ui_rect(MEMBER_X + 16, y + 6, 8, 8, UI_ONLINE);
-        trunc_utf8(nb, sizeof nb, ms[i]->name, 22);
-        ui_text(MEMBER_X + 32, y, nb, UI_TEXT, 16);
+        ui_rrect(MEMBER_X + 16, y + 4, 20, 20, 10, UI_SEP);
+        if(ms[i]->avatar_url[0])
+            ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
+        ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_ONLINE);
+        trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
+        ui_text(MEMBER_X + 44, y, nb, UI_TEXT, 16);
         y += 28;
     }
     snprintf(buf, sizeof buf, "OFFLINE - %d", (int)n - on);
@@ -570,9 +595,12 @@ static void draw_members(main_ctx *L, const frame_view *v){
     y += 22;
     for(i = 0; i < n && y < SCR_H - 40; i++){
         if(ms[i]->online) continue;
-        ui_rect(MEMBER_X + 16, y + 6, 8, 8, UI_OFFLINE);
-        trunc_utf8(nb, sizeof nb, ms[i]->name, 22);
-        ui_text(MEMBER_X + 32, y, nb, UI_TEXT_DIM, 16);
+        ui_rrect(MEMBER_X + 16, y + 4, 20, 20, 10, UI_SEP);
+        if(ms[i]->avatar_url[0])
+            ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
+        ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_OFFLINE);
+        trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
+        ui_text(MEMBER_X + 44, y, nb, UI_TEXT_DIM, 16);
         y += 28;
     }
 }
@@ -603,19 +631,22 @@ static void draw_messages(main_ctx *L){
         } else if(ln->att >= 0 && ln->att < ln->m->natt){
             const attachment *a = &ln->m->att[ln->att];
             char fb[128];
-            if(a->image && ui_img(a->url, CHAT_X + MSG_PAD, y,
-                                  ln->att_w, ln->att_h))
+            int ax = CHAT_X + MSG_PAD + MSG_INDENT;
+            if(a->image && ui_img(a->url, ax, y, ln->att_w, ln->att_h))
                 continue;
             trunc_utf8(fb, sizeof fb, a->name[0] ? a->name : "attachment", 56);
-            ui_text(CHAT_X + MSG_PAD, y + 4, fb, UI_TEXT_LINK, 14);
+            ui_text(ax, y + 4, fb, UI_TEXT_LINK, 14);
         } else if(ln->author){
             char tbuf[8];
             int nw, tx;
             uint64_t t = (uint64_t)((ln->m->id >> 22) + 1420070400000ULL);
             mv_time_str(t, tbuf, sizeof tbuf);
-            ui_text(CHAT_X + MSG_PAD, y + 3, ln->m->author_name, UI_TEXT, 16);
+            ui_rrect(CHAT_X + MSG_PAD, y + 1, 40, 40, 20, UI_CHANNEL_BG);
+            ui_img(ln->m->author_avatar, CHAT_X + MSG_PAD, y + 1, 40, 40);
+            tx = CHAT_X + MSG_PAD + MSG_INDENT;
+            ui_text(tx, y + 3, ln->m->author_name, UI_TEXT, 16);
             nw = ui_text_width(ln->m->author_name, 16);
-            tx = CHAT_X + MSG_PAD + 12 + nw;
+            tx += nw + 12;
             ui_text(tx, y + 5, tbuf, UI_TEXT_DIM, 12);
             tx += ui_text_width(tbuf, 12) + 8;
             if(ln->m->has_edit){
@@ -630,7 +661,7 @@ static void draw_messages(main_ctx *L){
             if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
             memcpy(buf, ln->m->content + ln->off, (size_t)len);
             buf[len] = 0;
-            ui_text(CHAT_X + MSG_PAD, y + 2, buf, UI_TEXT, 16);
+            ui_text(CHAT_X + MSG_PAD + MSG_INDENT, y + 2, buf, UI_TEXT, 16);
         }
     }
     ui_clear_clip();
@@ -657,7 +688,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
             if(sel) ui_rect(0, y + 12, 4, 24, UI_TEXT);
             if(i == 0){
                 ui_text(36 - ui_text_width("DM", 18) / 2, y + 14, "DM", 0xFFFFFFFFu, 18);
-            } else {
+            } else if(!v->guilds[i - 1]->icon_url[0] ||
+                      !ui_img(v->guilds[i - 1]->icon_url, 16, y + 4, 40, 40)){
                 first_codepoint(v->guilds[i - 1]->name, buf, sizeof buf);
                 ui_text(36 - ui_text_width(buf, 20) / 2, y + 13, buf, 0xFFFFFFFFu, 20);
             }
@@ -679,11 +711,15 @@ static void draw_main(main_ctx *L, const frame_view *v){
     if(first < 0) first = 0;
     for(i = first; i < v->nt && i < first + CHAN_VIS; i++){
         int sel = i == v->ci;
+        int tx = RAIL_W + 20;
         y = CHAN_TOP + (i - first) * CHAN_ROW_H;
         if(sel) ui_rrect(RAIL_W + 8, y, CHAN_W - 16, CHAN_ROW_H - 4, 4, UI_SEP);
+        if(v->text[i]->avatar_url[0] &&
+           ui_img(v->text[i]->avatar_url, RAIL_W + 16, y + 3, 24, 24))
+            tx = RAIL_W + 48;
         snprintf(buf, sizeof buf, "%s %s", v->dm ? "@" : "#", v->text[i]->name);
         trunc_utf8(buf, sizeof buf, buf, 26);
-        ui_text(RAIL_W + 20, y + 7, buf, sel ? UI_TEXT : UI_TEXT_DIM, 16);
+        ui_text(tx, y + 7, buf, sel ? UI_TEXT : UI_TEXT_DIM, 16);
     }
 
     ui_rect(CHAT_X, 0, CHAT_W, SCR_H, UI_CHAT_BG);

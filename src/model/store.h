@@ -15,6 +15,7 @@ typedef struct {
 typedef struct message {
     uint64_t id, chan, author_id;
     char author_name[64];
+    char author_avatar[128];
     char content[2048];
     uint64_t edited_at;
     int has_edit;
@@ -30,6 +31,7 @@ typedef struct channel {
     uint64_t id, guild;
     int type;
     char name[100];
+    char avatar_url[128];
     int nsfw, position;
 } channel;
 
@@ -42,6 +44,7 @@ typedef struct guild {
 typedef struct member {
     uint64_t user, guild;
     char name[64];
+    char avatar_url[128];
     int online;
 } member;
 
