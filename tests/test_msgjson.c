@@ -162,6 +162,28 @@ TEST(test_msgjson_resolve_mentions){
     store_free(st);
 }
 
+TEST(test_msgjson_stickers){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"sticker_items\":["
+        "{\"id\":\"11\",\"name\":\"wave\",\"format_type\":1},"
+        "{\"id\":\"22\",\"name\":\"party\",\"format_type\":4},"
+        "{\"id\":\"33\",\"name\":\"lottie\",\"format_type\":3}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.natt, 3);
+    ASSERT_EQ_STR(m.att[0].url, "https://cdn.discordapp.com/stickers/11.png");
+    ASSERT_EQ_INT(m.att[0].w, 160);
+    ASSERT_EQ_INT(m.att[0].h, 160);
+    ASSERT_EQ_INT(m.att[0].image, 1);
+    ASSERT_TRUE(strstr(m.att[1].url, "/stickers/22.gif") != NULL);
+    ASSERT_EQ_STR(m.att[2].name, "lottie");
+    ASSERT_EQ_INT(m.att[2].image, 0);
+    ASSERT_EQ_INT(m.att[2].url[0], 0);
+    jl_free(v);
+}
+
 TEST(test_msgjson_requires_id_and_channel){
     const char *json = "{\"id\":\"5\",\"content\":\"x\"}";
     jl_val_t *v = jl_parse(json, strlen(json));
@@ -180,5 +202,6 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_reply_reference();
     g_tests_run++; test_msgjson_reply_deleted_reference();
     g_tests_run++; test_msgjson_resolve_mentions();
+    g_tests_run++; test_msgjson_stickers();
     g_tests_run++; test_msgjson_requires_id_and_channel();
 }

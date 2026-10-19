@@ -200,6 +200,30 @@ int msg_from_json(message *m, jl_val_t *o){
         }
     }
     {
+        jl_val_t *sts = field(o, "sticker_items");
+        if(sts && sts->type == JL_ARRAY){
+            for(i = 0; i < sts->count && m->natt < MSG_MAX_ATT; i++){
+                jl_val_t *sj = jl_arr_at(sts, i);
+                attachment *at = &m->att[m->natt];
+                int fmt = jint(field(sj, "format_type"));
+                uint64_t id = jid(field(sj, "id"));
+                if(!id) continue;
+                snprintf(at->name, sizeof at->name, "%s",
+                         jstr(field(sj, "name")));
+                if(fmt == 3){
+                    at->image = 0;
+                } else {
+                    snprintf(at->url, sizeof at->url,
+                             "https://cdn.discordapp.com/stickers/%llu.%s",
+                             (unsigned long long)id, fmt == 4 ? "gif" : "png");
+                    at->w = at->h = 160;
+                    at->image = 1;
+                }
+                m->natt++;
+            }
+        }
+    }
+    {
         jl_val_t *rs = field(o, "reactions");
         if(rs && rs->type == JL_ARRAY){
             for(i = 0; i < rs->count && m->nreact < MSG_MAX_REACT; i++){
