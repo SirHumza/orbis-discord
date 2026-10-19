@@ -230,6 +230,31 @@ TEST(test_store_typing){
     store_free(st);
 }
 
+TEST(test_store_unread){
+    store *st = store_new();
+    channel c = {.id = 100, .guild = 9, .type = 0};
+    message a = {.id = 10, .chan = 100, .author_id = 7};
+    strcpy(c.name, "general");
+    strcpy(a.content, "x");
+    store_put_channel(st, &c);
+    ASSERT_EQ_INT(store_unread(st, 100), 0);
+    store_put_message(st, &a);
+    ASSERT_EQ_INT(store_unread(st, 100), 1);
+    store_mark_read(st, 100);
+    ASSERT_EQ_INT(store_unread(st, 100), 0);
+    a.id = 22;
+    store_put_message(st, &a);
+    ASSERT_EQ_INT(store_unread(st, 100), 1);
+    store_put_channel(st, &c);
+    ASSERT_EQ_INT(store_unread(st, 100), 1);
+    store_mark_read(st, 100);
+    store_put_channel(st, &c);
+    ASSERT_EQ_INT(store_unread(st, 100), 0);
+    ASSERT_EQ_INT(store_unread(st, 999), 0);
+    store_mark_read(st, 999);
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -244,4 +269,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_revision_tracks_mutations();
     g_tests_run++; test_store_reactions();
     g_tests_run++; test_store_typing();
+    g_tests_run++; test_store_unread();
 }

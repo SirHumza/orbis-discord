@@ -291,7 +291,12 @@ void store_put_channel(store *st, const channel *in){
     size_t i;
     if(!st || !in) return;
     for(i = 0; i < st->nchannels; i++)
-        if(st->channels[i].id == in->id){ st->channels[i] = *in; return; }
+        if(st->channels[i].id == in->id){
+            uint64_t read = st->channels[i].last_read;
+            st->channels[i] = *in;
+            st->channels[i].last_read = read;
+            return;
+        }
     if(st->nchannels == st->capchannels){
         size_t nc = st->capchannels ? st->capchannels * 2 : 16;
         channel *p = realloc(st->channels, nc * sizeof *p);
@@ -423,6 +428,30 @@ void store_set_member_name(store *st, uint64_t guild_id, uint64_t user_id, const
         if(st->members[i].guild == guild_id && st->members[i].user == user_id){
             snprintf(st->members[i].name, sizeof st->members[i].name, "%s", name); return;
         }
+}
+
+void store_mark_read(store *st, uint64_t chan){
+    chan_msgs *c;
+    size_t i;
+    if(!st) return;
+    c = msgs_for(st, chan, 0);
+    for(i = 0; i < st->nchannels; i++)
+        if(st->channels[i].id == chan){
+            st->channels[i].last_read = c && c->tail ? c->tail->id : 0;
+            return;
+        }
+}
+
+int store_unread(store *st, uint64_t chan){
+    chan_msgs *c;
+    size_t i;
+    if(!st) return 0;
+    for(i = 0; i < st->nchannels; i++)
+        if(st->channels[i].id == chan){
+            c = msgs_for(st, chan, 0);
+            return c && c->tail && c->tail->id > st->channels[i].last_read;
+        }
+    return 0;
 }
 
 void store_set_member_color(store *st, uint64_t guild_id, uint64_t user_id, uint32_t color){

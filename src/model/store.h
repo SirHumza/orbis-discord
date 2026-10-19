@@ -67,6 +67,7 @@ typedef struct channel {
     char name[100];
     char avatar_url[128];
     int nsfw, position;
+    uint64_t last_read;
 } channel;
 
 typedef struct guild {
@@ -106,6 +107,8 @@ size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap)
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);
 void store_set_member_name(store *, uint64_t guild_id, uint64_t user_id, const char *name);
 void store_set_member_color(store *, uint64_t guild_id, uint64_t user_id, uint32_t color);
+void store_mark_read(store *, uint64_t chan);
+int store_unread(store *, uint64_t chan);
 void store_react_add(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
 void store_react_remove(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
 void store_react_clear(store *, uint64_t chan, uint64_t msg);

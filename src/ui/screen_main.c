@@ -790,6 +790,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
         snprintf(buf, sizeof buf, "%s %s", v->dm ? "@" : "#", v->text[i]->name);
         trunc_utf8(buf, sizeof buf, buf, 26);
         ui_text(tx, y + 7, buf, sel ? UI_TEXT : UI_TEXT_DIM, 16);
+        if(store_unread(L->app->st, v->text[i]->id))
+            ui_rrect(RAIL_W + CHAN_W - 24, y + 12, 8, 8, 4, UI_TEXT);
     }
 
     ui_rect(CHAT_X, 0, CHAT_W, SCR_H, UI_CHAT_BG);
@@ -1011,8 +1013,10 @@ int screen_main_run(app_state *st){
         image_tick(now);
         view_build(&L, &v);
 
-        if(L.chan_loaded && store_revision(st->st) != L.last_rev)
+        if(L.chan_loaded && store_revision(st->st) != L.last_rev){
             view_rebuild(&L, L.chan_loaded);
+            store_mark_read(st->st, L.chan_loaded);
+        }
 
         {
             input_event evs[16];
