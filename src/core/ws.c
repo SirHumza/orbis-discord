@@ -91,16 +91,12 @@ static void next_mask(unsigned char mk[4]){
     mk[2]=(unsigned char)((mk_seed>>16)&0xff); mk[3]=(unsigned char)((mk_seed>>24)&0xff);
 }
 
-int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
-               const char *origin){
-    memset(w,0,sizeof(*w));
-    w->rcap = WS_RBUF_MIN;
-    w->rbuf = (unsigned char*)malloc(w->rcap);
-    if(!w->rbuf){ log_msg("ws: rbuf alloc fail"); return -1; }
-    if(net_ensure()<0) goto fail;
+int orbis_net_dial(const char *host, int port){
+    if(net_ensure() < 0) return -1;
 #ifdef ORBISRPC_SDK_PAYLOAD
     /* Resolve via libc (works wherever BSD sockets do). */
     struct addrinfo hints, *res = NULL;
+    int fd = -1;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
@@ -117,19 +113,17 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
         unsigned char *q = (unsigned char *)&a->sin_addr.s_addr;
         log_msg("dial %s -> %u.%u.%u.%u:%d", host, q[0], q[1], q[2], q[3], port);
     }
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if(fd < 0){ log_msg("socket fail"); freeaddrinfo(res); goto fail; }
-    w->fd = fd; w->sock = fd;
+    fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(fd < 0){ log_msg("socket fail"); goto fail; }
     {
         struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     }
     if(connect(fd, res->ai_addr, res->ai_addrlen) < 0){
         log_msg("connect fail (syscall) to %s:%d", host, port);
-        freeaddrinfo(res);
         goto fail;
     }
-    freeaddrinfo(res);
+    freeaddrinfo(res); res = NULL;
     {
         /* Both timeouts stay armed for the socket's whole life (plus
          * NBIO below): a stuck peer can never wedge the daemon silently —
@@ -143,12 +137,17 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
         int fl = fcntl(fd, F_GETFL, 0);
         if(fl >= 0) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
     }
-    w->nb = 1;
     log_msg("tcp established");
+    return fd;
+fail:
+    if(res) freeaddrinfo(res);
+    if(fd >= 0) close(fd);
+    return -1;
 #else
     /* memid = our net pool: passing 0 here fails with EBADF (0x80410109).
      * If pool creation failed, skip DNS and only allow IP literals. */
     int32_t rid = -1;
+    int32_t fd = -1;
     OrbisNetInAddr in; memset(&in,0,sizeof in);
     int resolved = 0;
     if(s_net_mem < 0){
@@ -169,9 +168,8 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
         if(ia.s_addr == 0xffffffff){ log_msg("resolve fail: %s", host); goto fail; }
         in.s_addr = ia.s_addr;
     }
-    int32_t fd = sceNetSocket("orbisrpcWs", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_STREAM, 0);
+    fd = sceNetSocket("orbisrpcWs", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_STREAM, 0);
     if(fd < 0){ log_msg("socket fail %d",fd); goto fail; }
-    w->fd = fd; w->sock = fd;
     /* Pack port + IPv4 into sa_data. The resolver's OrbisNetInAddr already
      * stores the octets in wire-memory order, so copy the 4 bytes VERBATIM
      * (any >>24-style arithmetic reverses the IP — v2 dialed mirrored IPs). */
@@ -203,11 +201,27 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
         struct timeval tv0 = { .tv_sec = 0, .tv_usec = 0 };
         sceNetSetsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv0, sizeof tv0);
     }
-    int on = 1;
-    sceNetSetsockopt(fd, SOL_SOCKET, SO_NBIO, &on, sizeof on);
-    w->nb = 1;
+    {
+        int on = 1;
+        sceNetSetsockopt(fd, SOL_SOCKET, SO_NBIO, &on, sizeof on);
+    }
     log_msg("tcp established");
+    return fd;
+fail:
+    if(fd >= 0) sceNetSocketClose(fd);
+    return -1;
 #endif
+}
+
+int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
+               const char *origin){
+    memset(w,0,sizeof(*w));
+    w->rcap = WS_RBUF_MIN;
+    w->rbuf = (unsigned char*)malloc(w->rcap);
+    if(!w->rbuf){ log_msg("ws: rbuf alloc fail"); return -1; }
+    int fd = orbis_net_dial(host, port);
+    if(fd < 0) goto fail;
+    w->fd = fd; w->sock = fd; w->nb = 1;
     /* TLS handshake over the established connection (mbedTLS, no external
      * module needed). Socket is NBIO; tls_start pumps it with a deadline. */
     w->tls = tls_start(fd, host);

@@ -52,11 +52,21 @@ int http_request(http *h, const char *host, const char *method, const char *path
     size_t body_off;
     if(!h || !host || !method || !path || !out) return -1;
     memset(out, 0, sizeof *out);
-    n = snprintf(hdr, sizeof hdr,
-        "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: orbis-discord/0.1\r\n"
-        "Authorization: %s\r\nContent-Type: application/json\r\n"
-        "Content-Length: %zu\r\nConnection: close\r\n\r\n",
-        method, path, host, token ? token : "", blen);
+    /* An empty or NULL token means "unauthenticated endpoint" (remote-auth
+     * login): omit the header entirely. A literal "Authorization: " line is
+     * not equivalent -- Discord's gateway rejects it as malformed auth. */
+    if(token && *token)
+        n = snprintf(hdr, sizeof hdr,
+            "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: orbis-discord/0.1\r\n"
+            "Authorization: %s\r\nContent-Type: application/json\r\n"
+            "Content-Length: %zu\r\nConnection: close\r\n\r\n",
+            method, path, host, token, blen);
+    else
+        n = snprintf(hdr, sizeof hdr,
+            "%s %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: orbis-discord/0.1\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %zu\r\nConnection: close\r\n\r\n",
+            method, path, host, blen);
     if(n <= 0 || (size_t)n >= sizeof hdr) return -2;
     if(h->io.write(h->io.ctx, hdr, (size_t)n) < 0) return -3;
     if(blen && h->io.write(h->io.ctx, body, blen) < 0) return -3;

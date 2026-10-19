@@ -93,6 +93,20 @@ TEST(test_rest_ratelimit){
     http_free(h);
 }
 
+TEST(test_http_omits_auth_when_token_empty){
+    memio m = {0};
+    m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+    http_io io = {mread, mwrite, &m};
+    http *h = http_new(io);
+    http_resp r;
+    ASSERT_EQ_INT(http_request(h, "discord.com", "POST", "/api/v9/users/@me/remote-auth/login",
+                               "{\"ticket\":\"x\"}", "", &r), 0);
+    ASSERT_TRUE(strstr(m.capture, "Authorization") == NULL);
+    ASSERT_TRUE(strstr(m.capture, "Content-Type: application/json") != NULL);
+    http_resp_free(&r);
+    http_free(h);
+}
+
 TEST(test_rest_retry_after_from_json_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{\"retry_after\":0.5}";
@@ -111,5 +125,6 @@ void run_rest_tests(void){
     g_tests_run++; test_http_get_headers_and_parse();
     g_tests_run++; test_http_post_body();
     g_tests_run++; test_rest_ratelimit();
+    g_tests_run++; test_http_omits_auth_when_token_empty();
     g_tests_run++; test_rest_retry_after_from_json_body();
 }

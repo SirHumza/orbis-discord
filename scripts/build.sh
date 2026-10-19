@@ -33,9 +33,9 @@ TARGET="x86_64-pc-freebsd12-elf"
 CFLAGS="--target=$TARGET -fPIC -std=gnu11 -O2 -Wall -Wno-unused \
         -Wno-int-conversion -Wno-incompatible-pointer-types \
         -DMBEDTLS_NO_PLATFORM_ENTROPY -D__PS4__ \
-        -Isrc/core -Isrc/model \
+        -Isrc -Isrc/core -Isrc/model \
         -isystem $SDK/include -Ithird_party/mbedtls/include"
-LIBS="-lc -lkernel -lSceNet -lSceNetCtl -lSceSysmodule -lSceUserService -lSDL2main -lSDL2"
+LIBS="-lc -lkernel -lSceNet -lSceNetCtl -lSceSysmodule -lSceUserService -lSceCommonDialog -lSceImeDialog -lScePad -lSceSystemService -lSDL2main -lSDL2"
 LDFLAGS="-m elf_x86_64 -pie --eh-frame-hdr -L$SDK/lib $LIBS $SDK/lib/crt1.o --script $SDK/link.x"
 export OO_PS4_TOOLCHAIN="$SDK"
 

@@ -46,6 +46,7 @@ typedef struct {
 
 int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
                const char *origin);
+int orbis_net_dial(const char *host, int port);
 int ws_build_handshake(char *out, size_t cap, const char *host, const char *resource,
                        const char *key, const char *origin);
 int ws_send_text(ws_t *w, const char *msg, size_t len);
