@@ -7,9 +7,11 @@ scratch to match the Discord desktop layout pixel for pixel.
 Status: **WIP (work in progress).** This is a hobby project, not a finished
 client. It boots, logs in with the Discord mobile app (QR remote auth) or a
 pasted user token, connects to the gateway, and implements text messaging,
-DMs, friends, reactions, threads, forums, invites, and settings. Voice and
-mic capture are in progress; screenshare is not started. Nothing has been
-smoke-tested on retail hardware yet.
+DMs, friends, reactions, threads, forums, invites, and settings. Voice
+joining completes the WS/UDP handshake, but Discord now requires DAVE E2EE
+for audio, so voice receive, mic capture, and screenshare are blocked
+pending a libdave/MLS port. Nothing has been smoke-tested on retail
+hardware yet.
 
 ## What works today
 
@@ -58,7 +60,7 @@ smoke-tested on retail hardware yet.
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
-| Voice chat, mic capture, screenshare | Not started (design pending) | — |
+| Voice chat, mic capture, screenshare | Blocked (mandatory DAVE E2EE) | — |
 
 Nothing has been smoke-tested on retail hardware yet; "PS4 elf" means it
 compiles and links against the OpenOrbis SDK, not that it has run on a console.
@@ -143,11 +145,11 @@ Phase 2, messaging parity:
 - [x] Active threads (list, open)
 - [x] Forums (browse and open active posts; creating posts is not wired)
 - [x] Settings screen (account/gateway info, sound toggle, logout)
-- [ ] Slash commands, context menus, extra keyboard/pad shortcuts
+- [ ] Slash commands (application commands cannot be invoked with a user token)
 - [x] Voice join: gateway op 4, voice WS identify, UDP IP discovery, select_protocol
-- [ ] Voice receive: Opus decode, XChaCha20/XSalsa20 decrypt, per-user playback
-- [ ] Mic capture (sceAudioIn) and input device selection
-- [ ] Screenshare: capture, encode, WebRTC go-live (hardware AVC access TBD)
+- [ ] Voice receive: blocked, Discord requires DAVE E2EE (close code 4017)
+- [ ] Mic capture (sceAudioIn): blocked by the same DAVE requirement
+- [ ] Screenshare: blocked by DAVE plus WebRTC/Go Live (hardware AVC access TBD)
 
 ## Known limitations
 
@@ -155,9 +157,12 @@ Phase 2, messaging parity:
   the oversized-READY envelope). Repeated drops hit Discord's identify budget.
 - Gateway frames above 64 KB are reduced to `op/s/t`; a rare oversized
   MESSAGE_CREATE is recovered by refetching history, not live.
-- Voice joins complete the voice WS/UDP handshake but carry no audio yet;
-  DAVE (E2EE) negotiation is not implemented, so servers that require it
-  will reject the session.
+- Voice joins complete the voice WS/UDP handshake but carry no audio.
+  Discord requires DAVE (E2EE) for all voice since March 2026; non-DAVE
+  sessions are rejected with close code 4017. Enabling audio needs libdave
+  plus mlspp and OpenSSL/BoringSSL, which is not portable to the current
+  mbedTLS/OpenOrbis stack in this scope. Screenshare additionally needs
+  WebRTC/Go Live and hardware H.264 access.
 - Attachments are fetched synchronously from the CDN on first draw, so a slow
   or large image can stall the render loop (HTTP responses are capped at 4 MB).
 - Attachments are capped at 4 per message and embeds at 2; embed fields
