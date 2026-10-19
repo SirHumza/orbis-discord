@@ -89,8 +89,7 @@ int ime_prompt(const char *title, const char *placeholder, char *out, size_t cap
             usleep(20000);
         }
     }
-    for(i = 0; i < cap - 1 && wbuf[i]; i++)
-        out[i] = (wbuf[i] < 128 && wbuf[i] >= 32) ? (char)wbuf[i] : '?';
-    out[i] = 0;
+    for(i = 0; i < cap - 1 && wbuf[i]; i++);
+    ime_utf16_to_utf8((const uint16_t *)wbuf, i, out, cap);
     return 1;
 }

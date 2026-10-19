@@ -38,6 +38,25 @@ TEST(test_store_messages_sorted_and_deduped){
     store_free(st);
 }
 
+TEST(test_store_del_pending_by_nonce){
+    store *st = store_new();
+    message real = {.id = 10, .chan = 1, .author_id = 7};
+    strcpy(real.author_name, "a"); strcpy(real.content, "one");
+    message pend = {.id = 99, .chan = 1, .author_id = 7, .pending = 1, .nonce = 42};
+    strcpy(pend.author_name, "a"); strcpy(pend.content, "two");
+    message other = {.id = 100, .chan = 1, .author_id = 7, .pending = 1, .nonce = 43};
+    strcpy(other.author_name, "a"); strcpy(other.content, "three");
+    store_put_message(st, &real);
+    store_put_message(st, &pend);
+    store_put_message(st, &other);
+    store_del_pending(st, 1, 42);
+    ASSERT_EQ_INT(store_messages(st, 1)->id, 10);
+    ASSERT_EQ_INT(store_messages(st, 1)->next->id, 100);
+    store_del_pending(st, 1, 999);
+    ASSERT_EQ_INT(store_messages(st, 1)->next->id, 100);
+    store_free(st);
+}
+
 TEST(test_store_delete_missing_is_noop){
     store *st = store_new();
     store_del_message(st, 1, 99);
@@ -112,6 +131,7 @@ void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
     g_tests_run++; test_store_messages_sorted_and_deduped();
+    g_tests_run++; test_store_del_pending_by_nonce();
     g_tests_run++; test_store_delete_missing_is_noop();
     g_tests_run++; test_store_delete_existing();
     g_tests_run++; test_store_grouping();

@@ -10,6 +10,8 @@ typedef struct message {
     uint64_t edited_at;
     int has_edit;
     int is_grouped;
+    int pending;
+    uint64_t nonce;
     struct message *next;
 } message;
 
@@ -38,6 +40,7 @@ store *store_new(void);
 void store_free(store *);
 void store_put_message(store *, const message *);
 void store_del_message(store *, uint64_t chan, uint64_t id);
+void store_del_pending(store *, uint64_t chan, uint64_t nonce);
 const message *store_messages(store *, uint64_t chan);
 void store_put_channel(store *, const channel *);
 const channel *store_channel(store *, uint64_t id);

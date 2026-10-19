@@ -125,6 +125,30 @@ TEST(test_rest_get_messages_path){
     http_free(h);
 }
 
+TEST(test_rest_post_message_utf8_bytes){
+    memio m = {0};
+    const char *body_json = "{\"content\":\"ok \xF0\x9F\x98\x80\",\"nonce\":\"5\"}";
+    int calls = 0;
+    m.responses[0] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+    http_io io = {mread, mwrite, &m};
+    http *h = http_new(io);
+    rest *r = rest_new(h, "tok");
+    ASSERT_TRUE(rest_send(r, "POST", "/api/v9/channels/42/messages", body_json,
+                          cb_count, &calls) == 0);
+    ASSERT_EQ_INT(rest_pump(r, 0), 1);
+    ASSERT_EQ_INT(calls, 1);
+    {
+        char expect[64];
+        snprintf(expect, sizeof expect, "Content-Length: %zu", strlen(body_json));
+        ASSERT_TRUE(strstr(m.capture, "POST /api/v9/channels/42/messages HTTP/1.1") != NULL);
+        ASSERT_TRUE(strstr(m.capture, "Authorization: tok") != NULL);
+        ASSERT_TRUE(strstr(m.capture, expect) != NULL);
+        ASSERT_TRUE(strstr(m.capture, body_json) != NULL);
+    }
+    rest_free(r);
+    http_free(h);
+}
+
 TEST(test_rest_retry_after_from_json_body){
     memio m = {0};
     m.responses[0] = "HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nContent-Length: 19\r\n\r\n{\"retry_after\":0.5}";
@@ -145,5 +169,6 @@ void run_rest_tests(void){
     g_tests_run++; test_rest_ratelimit();
     g_tests_run++; test_http_omits_auth_when_token_empty();
     g_tests_run++; test_rest_get_messages_path();
+    g_tests_run++; test_rest_post_message_utf8_bytes();
     g_tests_run++; test_rest_retry_after_from_json_body();
 }

@@ -12,16 +12,19 @@
 #include "theme.h"
 #include "nav.h"
 #include "msgview.h"
+#include "composer.h"
 #include "../core/ws.h"
 #include "../core/jsonlite.h"
 #include "../core/clock.h"
 #include "../core/log.h"
 #include "../model/snowflake.h"
 #include "../platform/input.h"
+#include "../platform/ime.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define GW_HOST "gateway.discord.gg"
@@ -44,6 +47,8 @@
 #define CHAN_VIS 27
 #define CHAT_Y0 (HEADER_H + 1)
 #define CHAT_H (SCR_H - CHAT_Y0)
+#define COMPOSER_H 56
+#define CHAT_VIEW_H (CHAT_H - COMPOSER_H)
 #define MSG_PAD 16
 
 typedef struct {
@@ -241,6 +246,30 @@ static int msg_count(const message *m){
     return n;
 }
 
+static void put_message_json(store *st, uint64_t chan, jl_val_t *o){
+    jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
+    jl_val_t *content = o ? jl_obj_get(o, "content") : NULL;
+    jl_val_t *author = o ? jl_obj_get(o, "author") : NULL;
+    jl_val_t *aid = author ? jl_obj_get(author, "id") : NULL;
+    jl_val_t *aname = author ? jl_obj_get(author, "username") : NULL;
+    jl_val_t *edited = o ? jl_obj_get(o, "edited_timestamp") : NULL;
+    message m;
+    if(!id || id->type != JL_STRING) return;
+    memset(&m, 0, sizeof m);
+    m.id = sn_parse(id->str);
+    m.chan = chan;
+    if(aid && aid->type == JL_STRING) m.author_id = sn_parse(aid->str);
+    if(aname && aname->type == JL_STRING)
+        snprintf(m.author_name, sizeof m.author_name, "%s", aname->str);
+    if(content && content->type == JL_STRING)
+        snprintf(m.content, sizeof m.content, "%s", content->str);
+    if(edited && edited->type == JL_STRING){
+        m.has_edit = 1;
+        m.edited_at = sn_parse(edited->str);
+    }
+    store_put_message(st, &m);
+}
+
 static void messages_cb(int status, const char *body, void *ud){
     hist_fetch *f = ud;
     main_ctx *L = f->ctx;
@@ -255,30 +284,8 @@ static void messages_cb(int status, const char *body, void *ud){
     }
     v = body ? jl_parse(body, strlen(body)) : NULL;
     if(v && v->type == JL_ARRAY){
-        for(i = 0; i < v->count; i++){
-            jl_val_t *o = jl_arr_at(v, i);
-            jl_val_t *id = o ? jl_obj_get(o, "id") : NULL;
-            jl_val_t *content = o ? jl_obj_get(o, "content") : NULL;
-            jl_val_t *author = o ? jl_obj_get(o, "author") : NULL;
-            jl_val_t *aid = author ? jl_obj_get(author, "id") : NULL;
-            jl_val_t *aname = author ? jl_obj_get(author, "username") : NULL;
-            jl_val_t *edited = o ? jl_obj_get(o, "edited_timestamp") : NULL;
-            message m;
-            if(!id || id->type != JL_STRING) continue;
-            memset(&m, 0, sizeof m);
-            m.id = sn_parse(id->str);
-            m.chan = f->chan;
-            if(aid && aid->type == JL_STRING) m.author_id = sn_parse(aid->str);
-            if(aname && aname->type == JL_STRING)
-                snprintf(m.author_name, sizeof m.author_name, "%s", aname->str);
-            if(content && content->type == JL_STRING)
-                snprintf(m.content, sizeof m.content, "%s", content->str);
-            if(edited && edited->type == JL_STRING){
-                m.has_edit = 1;
-                m.edited_at = sn_parse(edited->str);
-            }
-            store_put_message(L->app->st, &m);
-        }
+        for(i = 0; i < v->count; i++)
+            put_message_json(L->app->st, f->chan, jl_arr_at(v, i));
         if(f->older && v->count < 50) L->has_older = 0;
         if(!f->older) L->has_older = v->count >= 50;
         log_msg("rest: %d messages for %llu%s", v->count,
@@ -315,6 +322,76 @@ static void fetch_history(main_ctx *L, uint64_t chan, int older){
     }
 }
 
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+    uint64_t nonce;
+} send_fetch;
+
+static void send_cb(int status, const char *body, void *ud){
+    send_fetch *f = ud;
+    main_ctx *L = f->ctx;
+    store_del_pending(L->app->st, f->chan, f->nonce);
+    if(status == 200 && body){
+        jl_val_t *v = jl_parse(body, strlen(body));
+        if(v && v->type == JL_OBJECT)
+            put_message_json(L->app->st, f->chan, v);
+        jl_free(v);
+        log_msg("rest: sent to %llu", (unsigned long long)f->chan);
+    } else {
+        log_msg("rest: send failed (%d)", status);
+        set_status(L, "Send failed");
+    }
+    if(L->chan_loaded == f->chan) L->stick = 1;
+    free(f);
+}
+
+static void send_message(main_ctx *L, uint64_t chan, const char *content){
+    static uint64_t seq;
+    char payload[8192];
+    char path[96];
+    uint64_t nonce;
+    message pm;
+    send_fetch *f;
+    if(!content || !*content) return;
+    nonce = (uint64_t)time(NULL) * 1000ULL + (seq++ % 1000);
+    if(composer_payload(content, nonce, payload, sizeof payload) < 0){
+        log_msg("send: payload overflow");
+        return;
+    }
+    memset(&pm, 0, sizeof pm);
+    pm.id = (nonce << 22) | 1u;
+    pm.chan = chan;
+    pm.author_id = gw_self_id(L->app->gw);
+    if(L->app->self_name[0])
+        snprintf(pm.author_name, sizeof pm.author_name, "%s", L->app->self_name);
+    else
+        snprintf(pm.author_name, sizeof pm.author_name, "%s",
+                 gw_self_name(L->app->gw));
+    snprintf(pm.content, sizeof pm.content, "%s", content);
+    pm.pending = 1;
+    pm.nonce = nonce;
+    store_put_message(L->app->st, &pm);
+    L->stick = 1;
+    f = calloc(1, sizeof *f);
+    if(!f){
+        store_del_pending(L->app->st, chan, nonce);
+        return;
+    }
+    f->ctx = L;
+    f->chan = chan;
+    f->nonce = nonce;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/messages",
+             (unsigned long long)chan);
+    if(rest_send(L->app->rest, "POST", path, payload, send_cb, f) != 0){
+        store_del_pending(L->app->st, chan, nonce);
+        free(f);
+        set_status(L, "Send failed");
+        return;
+    }
+    set_status(L, "Sending...");
+}
+
 static int measure_adapter(void *ud, const char *s, size_t len){
     char buf[MV_MEASURE_MAX + 1];
     (void)ud;
@@ -325,7 +402,7 @@ static int measure_adapter(void *ud, const char *s, size_t len){
 }
 
 static void scroll_clamp(main_ctx *L){
-    int max = L->mv.height - CHAT_H;
+    int max = L->mv.height - CHAT_VIEW_H;
     if(max < 0) max = 0;
     if(L->top_px > max) L->top_px = max;
     if(L->top_px < 0) L->top_px = 0;
@@ -380,12 +457,12 @@ static void view_build(main_ctx *L, frame_view *v){
 static void draw_messages(main_ctx *L){
     int i;
     if(L->mv.n == 0) return;
-    ui_set_clip(CHAT_X, CHAT_Y0, CHAT_W, CHAT_H);
+    ui_set_clip(CHAT_X, CHAT_Y0, CHAT_W, CHAT_VIEW_H);
     for(i = 0; i < L->mv.n; i++){
         const mv_line *ln = &L->mv.lines[i];
         int y = CHAT_Y0 + ln->y - L->top_px;
         if(y + MV_LINE_H < CHAT_Y0) continue;
-        if(y > CHAT_Y0 + CHAT_H) break;
+        if(y > CHAT_Y0 + CHAT_VIEW_H) break;
         if(ln->is_sep){
             char d[48];
             int tw, half;
@@ -401,15 +478,20 @@ static void draw_messages(main_ctx *L){
             ui_text(CHAT_X + (CHAT_W - tw) / 2, y + 10, d, UI_TEXT_DIM, 12);
         } else if(ln->author){
             char tbuf[8];
-            int nw;
+            int nw, tx;
             uint64_t t = (uint64_t)((ln->m->id >> 22) + 1420070400000ULL);
             mv_time_str(t, tbuf, sizeof tbuf);
             ui_text(CHAT_X + MSG_PAD, y + 3, ln->m->author_name, UI_TEXT, 16);
             nw = ui_text_width(ln->m->author_name, 16);
-            ui_text(CHAT_X + MSG_PAD + 12 + nw, y + 5, tbuf, UI_TEXT_DIM, 12);
-            if(ln->m->has_edit)
-                ui_text(CHAT_X + MSG_PAD + 20 + nw + ui_text_width(tbuf, 12),
-                        y + 5, "(edited)", UI_TEXT_DIM, 12);
+            tx = CHAT_X + MSG_PAD + 12 + nw;
+            ui_text(tx, y + 5, tbuf, UI_TEXT_DIM, 12);
+            tx += ui_text_width(tbuf, 12) + 8;
+            if(ln->m->has_edit){
+                ui_text(tx, y + 5, "(edited)", UI_TEXT_DIM, 12);
+                tx += ui_text_width("(edited)", 12) + 8;
+            }
+            if(ln->m->pending)
+                ui_text(tx, y + 5, "sending...", UI_TEXT_DIM, 12);
         } else {
             char buf[MV_MEASURE_MAX + 1];
             int len = ln->len;
@@ -473,18 +555,30 @@ static void draw_main(main_ctx *L, const frame_view *v){
     if(L->focus == 2) ui_rect(CHAT_X, HEADER_H - 2, CHAT_W, 2, UI_BLURPLE);
     if(!v->active){
         const char *hint = "Select a text channel";
-        ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2, 520,
-                hint, UI_TEXT_DIM, 16);
+        ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2,
+                CHAT_Y0 + CHAT_VIEW_H / 2 - 8, hint, UI_TEXT_DIM, 16);
     } else if(L->mv.n == 0){
         const char *hint = L->hist_pending ? "Loading messages..." : "No messages yet";
-        ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2, 520,
-                hint, UI_TEXT_DIM, 16);
+        ui_text(CHAT_X + (CHAT_W - ui_text_width(hint, 16)) / 2,
+                CHAT_Y0 + CHAT_VIEW_H / 2 - 8, hint, UI_TEXT_DIM, 16);
     } else {
         draw_messages(L);
-        ui_rect(CHAT_X, SCR_H - 34, CHAT_W, 34, UI_CHAT_BG);
-        ui_text(CHAT_X + MSG_PAD, SCR_H - 26,
-                "Up/Down: scroll   L1/R1: page   R3: bottom",
-                UI_TEXT_DIM, 12);
+    }
+
+    {
+        int cy = SCR_H - COMPOSER_H;
+        ui_rect(CHAT_X, cy, CHAT_W, COMPOSER_H, UI_CHAT_BG);
+        ui_rect(CHAT_X, cy, CHAT_W, 1, UI_SEP);
+        ui_rrect(CHAT_X + MSG_PAD, cy + 8, CHAT_W - 2 * MSG_PAD,
+                 COMPOSER_H - 16, 8, UI_CHANNEL_BG);
+        if(L->focus == 2)
+            ui_rect(CHAT_X + MSG_PAD, cy + 8, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
+        if(v->active)
+            snprintf(buf, sizeof buf, "Message #%s", v->active->name);
+        else
+            snprintf(buf, sizeof buf, "Message");
+        trunc_utf8(buf, sizeof buf, buf, 60);
+        ui_text(CHAT_X + MSG_PAD + 12, cy + 22, buf, UI_TEXT_DIM, 16);
     }
 
     ui_rect(MEMBER_X, 0, MEMBER_W, SCR_H, UI_CHANNEL_BG);
@@ -655,16 +749,16 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_PGUP){
                     if(L.focus == 2 && v.active){
                         L.stick = 0;
-                        L.top_px -= CHAT_H - 2 * MV_LINE_H;
+                        L.top_px -= CHAT_VIEW_H - 2 * MV_LINE_H;
                         scroll_clamp(&L);
                         if(L.top_px == 0 && L.mv.n > 0 && L.chan_loaded)
                             fetch_history(&L, L.chan_loaded, 1);
                     }
                 } else if(e == IE_PGDN){
                     if(L.focus == 2){
-                        int max = L.mv.height - CHAT_H;
+                        int max = L.mv.height - CHAT_VIEW_H;
                         if(max < 0) max = 0;
-                        L.top_px += CHAT_H - 2 * MV_LINE_H;
+                        L.top_px += CHAT_VIEW_H - 2 * MV_LINE_H;
                         scroll_clamp(&L);
                         if(L.top_px >= max) L.stick = 1;
                     }
@@ -674,9 +768,14 @@ int screen_main_run(app_state *st){
                         L.top_px = L.mv.height;
                         scroll_clamp(&L);
                     }
-                } else if(e == IE_SELECT)
-                    log_msg("input: select unbound");
-                else if(e == IE_BACK)
+                } else if(e == IE_SELECT){
+                    if(L.focus == 2 && v.active){
+                        char text[1024];
+                        memset(text, 0, sizeof text);
+                        if(ime_prompt("Message", v.active->name, text, sizeof text))
+                            send_message(&L, v.active->id, text);
+                    }
+                } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
         }

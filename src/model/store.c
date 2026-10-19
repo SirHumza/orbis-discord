@@ -102,6 +102,22 @@ void store_del_message(store *st, uint64_t chan, uint64_t id){
     free(cur);
 }
 
+void store_del_pending(store *st, uint64_t chan, uint64_t nonce){
+    chan_msgs *c;
+    message *prev = NULL, *cur;
+    if(!st) return;
+    c = msgs_for(st, chan, 0);
+    if(!c) return;
+    cur = c->head;
+    while(cur && !(cur->pending && cur->nonce == nonce)){ prev = cur; cur = cur->next; }
+    if(!cur) return;
+    if(prev) prev->next = cur->next; else c->head = cur->next;
+    if(c->tail == cur) c->tail = prev;
+    if(cur->next && prev) cur->next->is_grouped = can_group(prev, cur->next);
+    else if(cur->next) cur->next->is_grouped = 0;
+    free(cur);
+}
+
 const message *store_messages(store *st, uint64_t chan){
     chan_msgs *c = st ? msgs_for(st, chan, 0) : NULL;
     return c ? c->head : NULL;

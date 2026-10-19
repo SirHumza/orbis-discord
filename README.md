@@ -21,7 +21,9 @@ rest of the feature set are the next milestones.
 | Guild + channel list (REST bootstrap), pad navigation with hold-repeat | Done | host tests, PS4 elf |
 | SDL2 renderer, Roboto + NotoEmoji embedded, Discord palette | Done | host tests, PS4 elf |
 | PNG/JPEG/GIF decode, LRU cache, save to `/data/orbis-discord/downloads` | Done | host tests |
-| Message history, composer/send, member list, DMs | Not started | — |
+| Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
+| Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
+| Member list, DMs | Not started | — |
 | Voice chat, mic capture, screenshare | Not started (design pending) | — |
 
 Nothing has been smoke-tested on retail hardware yet; "PS4 elf" means it
@@ -35,7 +37,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (83 checks) + fixtures
+tests/        host test suite (105 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -70,8 +72,8 @@ Phase 1 (in progress):
 - [x] Transport fork, stores, gateway ingestion, REST, QR remote auth
 - [x] SDL2 renderer/font/theme, image + GIF pipeline
 - [x] Login screen, main layout, pad navigation, live gateway session
-- [ ] Message view: history fetch, UTF-8 wrapping, grouping, day separators, scroll paging, live append
-- [ ] Composer + IME + send, optimistic append, ack correction
+- [x] Message view: history fetch, UTF-8 wrapping, grouping, day separators, scroll paging, live append
+- [x] Composer + IME + send, optimistic append, ack correction
 - [ ] Member list + presence dots, offline banner, DM list, PKG packaging
 - [ ] Whole-branch review, deploy, on-device smoke (login → channel → history → send → emoji → reconnect)
 
