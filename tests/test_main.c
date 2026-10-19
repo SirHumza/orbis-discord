@@ -5,6 +5,7 @@ int g_tests_run = 0, g_tests_failed = 0;
 int main(void){
     run_ws_streaming_tests();
     run_json_b64_tests();
+    run_store_tests();
     printf("%d checks, %d failed\n", g_tests_run, g_tests_failed);
     return g_tests_failed ? 1 : 0;
 }

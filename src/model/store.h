@@ -1,0 +1,48 @@
+#ifndef ORBIS_STORE_H
+#define ORBIS_STORE_H
+#include <stdint.h>
+#include <stddef.h>
+
+typedef struct message {
+    uint64_t id, chan, author_id;
+    char author_name[64];
+    char content[2048];
+    uint64_t edited_at;
+    int has_edit;
+    int is_grouped;
+    struct message *next;
+} message;
+
+typedef struct channel {
+    uint64_t id, guild;
+    int type;
+    char name[100];
+    int nsfw, position;
+} channel;
+
+typedef struct guild {
+    uint64_t id;
+    char name[100];
+    char icon_url[256];
+} guild;
+
+typedef struct member {
+    uint64_t user, guild;
+    char name[64];
+    int online;
+} member;
+
+typedef struct store store;
+
+store *store_new(void);
+void store_free(store *);
+void store_put_message(store *, const message *);
+void store_del_message(store *, uint64_t chan, uint64_t id);
+const message *store_messages(store *, uint64_t chan);
+void store_put_channel(store *, const channel *);
+void store_put_guild(store *, const guild *);
+void store_put_member(store *, const member *);
+size_t store_channels_for_guild(store *, uint64_t guild_id, uint64_t *out, size_t cap);
+size_t store_guilds(store *, const guild **out, size_t cap);
+size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
+#endif
