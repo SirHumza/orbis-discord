@@ -162,6 +162,27 @@ static int wrap_content(mv_layout *L, const message *m, const char *s, size_t le
     return y;
 }
 
+int mv_images(const message *head, const char **out, int max){
+    const message *m;
+    int i, n = 0;
+    if(!out || max <= 0) return 0;
+    for(m = head; m; m = m->next){
+        for(i = 0; i < m->natt; i++){
+            const attachment *a = &m->att[i];
+            if(!a->image || !a->url[0]) continue;
+            out[n++] = a->url;
+            if(n >= max) return n;
+        }
+        for(i = 0; i < m->nemb; i++){
+            const embed *e = &m->emb[i];
+            if(!e->image_url[0]) continue;
+            out[n++] = e->image_url;
+            if(n >= max) return n;
+        }
+    }
+    return n;
+}
+
 int mv_build(mv_layout *L, const message *head, int width_px,
              mv_measure_fn fn, void *ud){
     const message *m;

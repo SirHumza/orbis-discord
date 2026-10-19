@@ -97,6 +97,10 @@ typedef struct {
     int has_older;
     int hist_pending;
     int hist_older_pending;
+    int viewer;
+    int view_n;
+    int view_i;
+    char view_urls[MV_IMG_MAX][320];
 } main_ctx;
 
 typedef struct {
@@ -737,6 +741,42 @@ static void draw_messages(main_ctx *L){
     ui_clear_clip();
 }
 
+static void open_viewer(main_ctx *L, uint64_t chan){
+    const char *urls[MV_IMG_MAX];
+    int i, n = mv_images(store_messages(L->app->st, chan), urls, MV_IMG_MAX);
+    if(n <= 0) return;
+    L->view_n = n;
+    for(i = 0; i < n; i++)
+        snprintf(L->view_urls[i], sizeof L->view_urls[i], "%s", urls[i]);
+    L->view_i = n - 1;
+    L->viewer = 1;
+}
+
+static void draw_viewer(main_ctx *L){
+    const char *url = L->view_urls[L->view_i];
+    image *im;
+    char cap[64];
+    ui_rect(0, 0, SCR_W, SCR_H, 0xF0000000u);
+    im = image_get(url);
+    if(im && image_ready(im)){
+        int iw = image_w(im), ih = image_h(im);
+        if(iw > 0 && ih > 0){
+            int maxw = SCR_W - 160, maxh = SCR_H - 140;
+            int w = iw, h = ih;
+            if(w > maxw){ h = h * maxw / w; w = maxw; }
+            if(h > maxh){ w = w * maxh / h; h = maxh; }
+            ui_img(url, (SCR_W - w) / 2, (SCR_H - h) / 2 - 10, w, h);
+        }
+    } else {
+        const char *s = "Loading image...";
+        ui_text((SCR_W - ui_text_width(s, 20)) / 2, SCR_H / 2 - 12, s,
+                UI_TEXT_DIM, 20);
+    }
+    snprintf(cap, sizeof cap, "%d / %d   UP/DOWN browse   CROSS close",
+             L->view_i + 1, L->view_n);
+    ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
+}
+
 static void draw_main(main_ctx *L, const frame_view *v){
     char buf[160];
     int i, first, y;
@@ -1023,6 +1063,15 @@ int screen_main_run(app_state *st){
             int ne = input_poll(evs, 16), i;
             for(i = 0; i < ne; i++){
                 input_event e = evs[i];
+                if(L.viewer){
+                    if(e == IE_VIEW || e == IE_SELECT || e == IE_BACK)
+                        L.viewer = 0;
+                    else if(e == IE_UP && L.view_i > 0)
+                        L.view_i--;
+                    else if(e == IE_DOWN && L.view_i + 1 < L.view_n)
+                        L.view_i++;
+                    continue;
+                }
                 if(e == IE_LEFT){
                     if(L.focus > 0) L.focus--;
                 } else if(e == IE_RIGHT){
@@ -1070,6 +1119,9 @@ int screen_main_run(app_state *st){
                         if(ime_prompt("Message", v.active->name, text, sizeof text))
                             send_message(&L, v.active->id, text);
                     }
+                } else if(e == IE_VIEW){
+                    if(L.focus == 2 && v.active)
+                        open_viewer(&L, v.active->id);
                 } else if(e == IE_BACK)
                     log_msg("input: back unbound");
             }
@@ -1078,6 +1130,7 @@ int screen_main_run(app_state *st){
         view_build(&L, &v);
         ui_frame_begin();
         draw_main(&L, &v);
+        if(L.viewer) draw_viewer(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

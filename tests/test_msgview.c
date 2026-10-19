@@ -188,6 +188,26 @@ TEST(test_msgview_reply_row){
     mv_free(&L);
 }
 
+TEST(test_msgview_image_list){
+    message a = mkmsg(1500000000000ULL, 1, 7, "", 0);
+    message b = mkmsg(1500000000000ULL, 2, 7, "", 1);
+    const char *urls[4];
+    a.natt = 2;
+    snprintf(a.att[0].url, sizeof a.att[0].url, "https://cdn/a.png");
+    a.att[0].image = 1;
+    snprintf(a.att[1].url, sizeof a.att[1].url, "https://cdn/file.zip");
+    a.nemb = 1;
+    snprintf(a.emb[0].image_url, sizeof a.emb[0].image_url, "https://cdn/e.png");
+    b.natt = 1;
+    snprintf(b.att[0].url, sizeof b.att[0].url, "https://cdn/b.gif");
+    b.att[0].image = 1;
+    a.next = &b;
+    ASSERT_EQ_INT(mv_images(&a, urls, 4), 3);
+    ASSERT_EQ_STR(urls[0], "https://cdn/a.png");
+    ASSERT_EQ_STR(urls[1], "https://cdn/e.png");
+    ASSERT_EQ_STR(urls[2], "https://cdn/b.gif");
+}
+
 TEST(test_msgview_time_and_day_strings){
     char buf[64];
     mv_time_str(1420070400000ULL, buf, sizeof buf);
@@ -213,5 +233,6 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_embed_rows();
     g_tests_run++; test_msgview_reaction_row();
     g_tests_run++; test_msgview_reply_row();
+    g_tests_run++; test_msgview_image_list();
     g_tests_run++; test_msgview_time_and_day_strings();
 }

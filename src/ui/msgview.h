@@ -16,6 +16,7 @@
 #define MV_ATT_MAX_H 260
 #define MV_REACT_H 26
 #define MV_REPLY_H 20
+#define MV_IMG_MAX 32
 
 /* width in px of s[0..len) */
 typedef int (*mv_measure_fn)(void *ud, const char *s, size_t len);
@@ -46,6 +47,7 @@ void mv_free(mv_layout *L);
 /* Rebuilds from the store list (oldest head first). Returns line count. */
 int mv_build(mv_layout *L, const message *head, int width_px,
              mv_measure_fn fn, void *ud);
+int mv_images(const message *head, const char **out, int max);
 uint64_t mv_day(uint64_t ms);
 void mv_time_str(uint64_t ms, char *out, size_t cap);
 void mv_day_str(uint64_t ms, char *out, size_t cap);
