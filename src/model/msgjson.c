@@ -253,3 +253,26 @@ int emoji_from_json(emoji_item *e, jl_val_t *o){
     e->animated = jbool(field(o, "animated"));
     return 1;
 }
+
+int recipients_from_json(jl_val_t *arr, recip_item *out, int cap){
+    int n = 0, i;
+    if(!arr || arr->type != JL_ARRAY || !out || cap <= 0) return 0;
+    for(i = 0; i < arr->count && n < cap; i++){
+        jl_val_t *o = jl_arr_at(arr, i);
+        uint64_t id;
+        const char *gname, *uname;
+        if(!o || o->type != JL_OBJECT) continue;
+        id = jid(field(o, "id"));
+        if(!id) continue;
+        memset(&out[n], 0, sizeof out[n]);
+        out[n].id = id;
+        gname = jstr(field(o, "global_name"));
+        uname = jstr(field(o, "username"));
+        snprintf(out[n].name, sizeof out[n].name, "%s",
+                 gname[0] ? gname : (uname[0] ? uname : "user"));
+        cdn_avatar_url(out[n].avatar, sizeof out[n].avatar, id,
+                       jstr(field(o, "avatar")));
+        n++;
+    }
+    return n;
+}

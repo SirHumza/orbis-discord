@@ -95,6 +95,12 @@ typedef struct {
     int animated;
 } emoji_item;
 
+typedef struct {
+    uint64_t id;
+    char name[64];
+    char avatar[128];
+} recip_item;
+
 typedef struct store store;
 
 store *store_new(void);

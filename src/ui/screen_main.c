@@ -150,6 +150,12 @@ typedef struct {
     uint64_t gif_chan;
     char gif_q[96];
     gif_item gif_list[16];
+    int gview;
+    int gview_pending;
+    int gview_n;
+    int gview_i;
+    uint64_t gview_chan;
+    recip_item gview_list[32];
     uint64_t badge_rev;
     uint64_t badge_last_read;
     int badge_n;
@@ -179,6 +185,7 @@ typedef struct {
     int friend_n;
     int friend_i;
     int friend_sel[FRIEND_MAX];
+    uint64_t friends_add;
     char presence[16];
     int status_menu;
     int status_i;
@@ -757,6 +764,7 @@ static void friends_cb(int status, const char *body, void *ud){
 static void friends_open(main_ctx *L){
     L->friends = 1;
     L->friend_i = 0;
+    L->friends_add = 0;
     memset(L->friend_sel, 0, sizeof L->friend_sel);
     if(L->friends_loaded || L->friends_pending) return;
     L->friends_pending = 1;
@@ -765,6 +773,94 @@ static void friends_open(main_ctx *L){
         L->friends_pending = 0;
         set_status(L, "Friends failed");
     }
+}
+
+typedef struct {
+    main_ctx *ctx;
+    uint64_t chan;
+} gview_op;
+
+static void gview_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    jl_val_t *v = (status == 200 && body) ? jl_parse(body, strlen(body))
+                                          : NULL;
+    L->gview_pending = 0;
+    L->gview_n = 0;
+    if(v && v->type == JL_OBJECT)
+        L->gview_n = recipients_from_json(jl_obj_get(v, "recipients"),
+                                          L->gview_list, 32);
+    if(status != 200) set_status(L, "Members failed");
+    if(L->gview_i >= L->gview_n) L->gview_i = L->gview_n > 0
+                                                  ? L->gview_n - 1 : 0;
+    jl_free(v);
+    free(f);
+}
+
+static void gview_fetch(main_ctx *L, uint64_t chan){
+    char path[96];
+    gview_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    L->gview_pending = 1;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu",
+             (unsigned long long)chan);
+    if(rest_send(L->app->rest, "GET", path, NULL, gview_cb, f) != 0){
+        L->gview_pending = 0;
+        free(f);
+        set_status(L, "Members failed");
+    }
+}
+
+static void gview_open(main_ctx *L, uint64_t chan){
+    L->gview = 1;
+    L->gview_i = 0;
+    L->gview_n = 0;
+    L->gview_chan = chan;
+    gview_fetch(L, chan);
+}
+
+static void gview_remove_cb(int status, const char *body, void *ud){
+    gview_op *f = ud;
+    main_ctx *L = f->ctx;
+    (void)body;
+    if(status == 204 || status == 200){
+        set_status(L, "Removed");
+        gview_fetch(L, f->chan);
+    } else {
+        set_status(L, "Remove failed");
+    }
+    free(f);
+}
+
+static void gview_remove(main_ctx *L, uint64_t chan, uint64_t user){
+    char path[128];
+    gview_op *f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    f->chan = chan;
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/recipients/%llu",
+             (unsigned long long)chan, (unsigned long long)user);
+    if(rest_send(L->app->rest, "DELETE", path, NULL, gview_remove_cb, f) != 0){
+        free(f);
+        set_status(L, "Remove failed");
+    }
+}
+
+static void gview_add_cb(int status, const char *body, void *ud){
+    main_ctx *L = ud;
+    (void)body;
+    if(status == 204 || status == 200) set_status(L, "Added to group");
+    else set_status(L, "Add failed");
+}
+
+static void gview_add(main_ctx *L, uint64_t chan, uint64_t user){
+    char path[128];
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/recipients/%llu",
+             (unsigned long long)chan, (unsigned long long)user);
+    if(rest_send(L->app->rest, "PUT", path, NULL, gview_add_cb, L) != 0)
+        set_status(L, "Add failed");
 }
 
 typedef struct {
@@ -1769,7 +1865,8 @@ static void draw_friends(main_ctx *L){
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
     ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
-    ui_text(x + 20, y + 16, "Friends", UI_TEXT, 18);
+    ui_text(x + 20, y + 16, L->friends_add ? "Add to group" : "Friends",
+            UI_TEXT, 18);
     if(L->friends_pending){
         ui_text(x + 20, y + 60, "Loading friends...", UI_TEXT_DIM, 16);
     } else if(L->friend_n == 0){
@@ -1790,14 +1887,50 @@ static void draw_friends(main_ctx *L){
             ui_text(x + 64, ry, fr->name, UI_TEXT, 16);
             snprintf(label, sizeof label, "%s", friend_type_label(fr->type));
             ui_text(x + 64, ry + 20, label, UI_TEXT_DIM, 12);
-            ui_rrect(x + w - 54, ry + 6, 22, 22, 6,
-                      L->friend_sel[i] ? UI_BLURPLE : UI_CHANNEL_BG);
-            if(L->friend_sel[i])
-                ui_rect(x + w - 49, ry + 11, 12, 12, UI_TEXT);
+            if(!L->friends_add){
+                ui_rrect(x + w - 54, ry + 6, 22, 22, 6,
+                          L->friend_sel[i] ? UI_BLURPLE : UI_CHANNEL_BG);
+                if(L->friend_sel[i])
+                    ui_rect(x + w - 49, ry + 11, 12, 12, UI_TEXT);
+            }
+        }
+    }
+    if(L->friends_add)
+        ui_text(x + 20, y + h - 30, "CROSS add   CIRCLE close",
+                UI_TEXT_DIM, 12);
+    else
+        ui_text(x + 20, y + h - 30,
+                "CROSS open   SQUARE select   CIRCLE close",
+                UI_TEXT_DIM, 12);
+}
+
+static void draw_gview(main_ctx *L){
+    int w = 640, h = 560;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i, first;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 20, y + 16, "Group members", UI_TEXT, 18);
+    if(L->gview_pending){
+        ui_text(x + 20, y + 60, "Loading members...", UI_TEXT_DIM, 16);
+    } else if(L->gview_n == 0){
+        ui_text(x + 20, y + 60, "No members", UI_TEXT_DIM, 16);
+    } else {
+        first = L->gview_i - 4;
+        if(first < 0) first = 0;
+        if(first > L->gview_n - 9) first = L->gview_n - 9;
+        if(first < 0) first = 0;
+        for(i = first; i < L->gview_n && i < first + 9; i++){
+            const recip_item *r = &L->gview_list[i];
+            int ry = y + 56 + (i - first) * 52;
+            if(i == L->gview_i)
+                ui_rrect(x + 12, ry - 4, w - 24, 46, 6, UI_BLURPLE);
+            ui_rrect(x + 20, ry, 32, 32, 16, UI_CHANNEL_BG);
+            ui_img(r->avatar, x + 20, ry, 32, 32);
+            ui_text(x + 64, ry + 8, r->name, UI_TEXT, 16);
         }
     }
     ui_text(x + 20, y + h - 30,
-            "CROSS open   SQUARE select   CIRCLE close",
+            "CROSS remove   SQUARE add friend   CIRCLE close",
             UI_TEXT_DIM, 12);
 }
 
@@ -2431,18 +2564,43 @@ int screen_main_run(app_state *st){
                         L.friend_i--;
                     } else if(e == IE_DOWN && L.friend_i + 1 < L.friend_n){
                         L.friend_i++;
-                    } else if(e == IE_MENU && L.friend_n > 0){
+                    } else if(e == IE_MENU && L.friend_n > 0 &&
+                              !L.friends_add){
                         L.friend_sel[L.friend_i] = !L.friend_sel[L.friend_i];
                     } else if(e == IE_SELECT && L.friend_n > 0){
-                        uint64_t ids[FRIEND_MAX];
-                        int k = 0, j;
-                        for(j = 0; j < L.friend_n; j++)
-                            if(L.friend_sel[j] && L.friends_list[j].type != 2)
-                                ids[k++] = L.friends_list[j].id;
-                        if(k > 0) group_create(&L, ids, k);
-                        else friend_dm(&L, &L.friends_list[L.friend_i]);
+                        if(L.friends_add){
+                            const friend_entry *fr =
+                                &L.friends_list[L.friend_i];
+                            if(fr->type != 2)
+                                gview_add(&L, L.friends_add, fr->id);
+                        } else {
+                            uint64_t ids[FRIEND_MAX];
+                            int k = 0, j;
+                            for(j = 0; j < L.friend_n; j++)
+                                if(L.friend_sel[j] &&
+                                   L.friends_list[j].type != 2)
+                                    ids[k++] = L.friends_list[j].id;
+                            if(k > 0) group_create(&L, ids, k);
+                            else friend_dm(&L, &L.friends_list[L.friend_i]);
+                        }
                     } else if(e == IE_BACK || e == IE_FRIENDS){
                         L.friends = 0;
+                    }
+                    continue;
+                }
+                if(L.gview){
+                    if(e == IE_UP && L.gview_i > 0){
+                        L.gview_i--;
+                    } else if(e == IE_DOWN && L.gview_i + 1 < L.gview_n){
+                        L.gview_i++;
+                    } else if(e == IE_SELECT && L.gview_n > 0){
+                        gview_remove(&L, L.gview_chan,
+                                     L.gview_list[L.gview_i].id);
+                    } else if(e == IE_MENU){
+                        friends_open(&L);
+                        if(L.friends) L.friends_add = L.gview_chan;
+                    } else if(e == IE_BACK || e == IE_VIEW){
+                        L.gview = 0;
                     }
                     continue;
                 }
@@ -2542,6 +2700,8 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_VIEW){
                     if(L.focus == 2 && v.active)
                         open_viewer(&L, v.active->id);
+                    else if(L.focus == 1 && v.active && v.active->type == 3)
+                        gview_open(&L, v.active->id);
                 } else if(e == IE_MENU){
                     if(L.focus == 2 && v.active)
                         sel_begin(&L, v.active->id);
@@ -2573,6 +2733,7 @@ int screen_main_run(app_state *st){
         if(L.react_pick) draw_react_pick(&L);
         if(L.pins) draw_pins(&L);
         if(L.search) draw_search(&L);
+        if(L.gview) draw_gview(&L);
         if(L.friends) draw_friends(&L);
         if(L.status_menu) draw_status_menu(&L);
         if(L.profile) draw_profile(&L);

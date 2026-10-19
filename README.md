@@ -37,7 +37,7 @@ rest of the feature set are the next milestones.
 | Pins: L2 overlay, pinned message list, CROSS jumps to the message | Done | PS4 elf |
 | Message search: R2 query overlay (guild/channel endpoint), CROSS jumps | Done | PS4 elf |
 | Friends: OPTIONS overlay from relationships, CROSS opens/creates a DM | Done | PS4 elf |
-| Group DMs: SQUARE multi-select in friends creates a group, SQUARE renames | Done | host tests, PS4 elf |
+| Group DMs: multi-select create, rename, TRIANGLE member list with add/remove | Done | host tests, PS4 elf |
 | Presence: L3 status picker (online/idle/dnd/invisible) via gateway op 3 | Done | host tests, PS4 elf |
 | Member profiles: CROSS menu card with avatar, tag, joined date, bot badge | Done | PS4 elf |
 | Custom emoji picker: guild emoji row in the reaction picker, sends name:id | Done | host tests, PS4 elf |
@@ -61,7 +61,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (152 checks) + fixtures
+tests/        host test suite (154 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -124,9 +124,8 @@ Phase 2, messaging parity:
 - [x] Member profiles (avatar, tag, joined date, bot badge)
 - [x] Role hoisting (member list sections by hoisted role)
 - [x] DM list (REST), friends overlay (OPTIONS) with open/create DM
-- [x] Group DM creation (friends multi-select) and rename
+- [x] Group DM creation (friends multi-select), rename, member add/remove
 - [x] Presence control (L3 picker, gateway op 3)
-- [ ] Group DM add/remove recipients
 - [ ] Threads, forums, invites, channel categories, permissions
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen
 - [ ] Voice channels: Opus, UDP voice gateway, XSalsa20-Poly1305, per-user playback

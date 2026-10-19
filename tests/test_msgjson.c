@@ -216,6 +216,40 @@ TEST(test_msgjson_emoji_item_invalid){
     jl_free(v);
 }
 
+TEST(test_msgjson_recipients){
+    const char *json =
+        "{\"id\":\"900\",\"type\":3,\"recipients\":["
+        "{\"id\":\"111\",\"username\":\"bob\",\"global_name\":\"Bobby\","
+        "\"avatar\":\"h1\"},"
+        "{\"id\":\"222\",\"username\":\"eve\",\"avatar\":null},"
+        "{\"username\":\"noid\"}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    recip_item r[8];
+    int n;
+    ASSERT_TRUE(v != NULL);
+    n = recipients_from_json(jl_obj_get(v, "recipients"), r, 8);
+    ASSERT_EQ_INT(n, 2);
+    ASSERT_EQ_INT(r[0].id, 111);
+    ASSERT_EQ_STR(r[0].name, "Bobby");
+    ASSERT_TRUE(strstr(r[0].avatar, "avatars/111/h1.png") != NULL);
+    ASSERT_EQ_INT(r[1].id, 222);
+    ASSERT_EQ_STR(r[1].name, "eve");
+    ASSERT_TRUE(strstr(r[1].avatar, "embed/avatars/") != NULL);
+    jl_free(v);
+}
+
+TEST(test_msgjson_recipients_invalid){
+    const char *json = "\"nope\"";
+    recip_item r[4];
+    jl_val_t *v = jl_parse(json, strlen(json));
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(recipients_from_json(NULL, r, 4), 0);
+    ASSERT_EQ_INT(recipients_from_json(v, r, 4), 0);
+    ASSERT_EQ_INT(recipients_from_json(v, NULL, 4), 0);
+    ASSERT_EQ_INT(recipients_from_json(v, r, 0), 0);
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
@@ -229,4 +263,6 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_requires_id_and_channel();
     g_tests_run++; test_msgjson_emoji_item();
     g_tests_run++; test_msgjson_emoji_item_invalid();
+    g_tests_run++; test_msgjson_recipients();
+    g_tests_run++; test_msgjson_recipients_invalid();
 }
