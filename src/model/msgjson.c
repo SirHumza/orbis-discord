@@ -276,3 +276,24 @@ int recipients_from_json(jl_val_t *arr, recip_item *out, int cap){
     }
     return n;
 }
+
+int overwrites_from_json(jl_val_t *arr, channel *ch){
+    int n = 0, i;
+    if(!ch) return 0;
+    ch->now = 0;
+    if(!arr || arr->type != JL_ARRAY) return 0;
+    for(i = 0; i < arr->count && n < CHAN_MAX_OW; i++){
+        jl_val_t *o = jl_arr_at(arr, i);
+        uint64_t id;
+        if(!o || o->type != JL_OBJECT) continue;
+        id = jid(field(o, "id"));
+        if(!id) continue;
+        ch->ow[n].id = id;
+        ch->ow[n].type = jint(field(o, "type"));
+        ch->ow[n].allow = jid(field(o, "allow"));
+        ch->ow[n].deny = jid(field(o, "deny"));
+        n++;
+    }
+    ch->now = n;
+    return n;
+}

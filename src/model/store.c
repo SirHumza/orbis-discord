@@ -357,6 +357,21 @@ void store_put_guild(store *st, const guild *in){
     st->guilds[st->nguilds++] = *in;
 }
 
+void store_set_guild_perms(store *st, uint64_t guild_id, uint64_t perms,
+                           const uint64_t *roles, int nroles){
+    size_t i;
+    guild *gu = NULL;
+    if(!st) return;
+    for(i = 0; i < st->nguilds; i++)
+        if(st->guilds[i].id == guild_id){ gu = &st->guilds[i]; break; }
+    if(!gu) return;
+    gu->my_perms = perms;
+    if(nroles < 0) nroles = 0;
+    if(nroles > 16) nroles = 16;
+    gu->my_nroles = nroles;
+    if(roles && nroles) memcpy(gu->my_roles, roles, (size_t)nroles * sizeof *roles);
+}
+
 void store_put_member(store *st, const member *in){
     size_t i;
     if(!st || !in) return;

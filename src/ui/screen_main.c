@@ -19,6 +19,7 @@
 #include "../core/log.h"
 #include "../model/cdnurl.h"
 #include "../model/msgjson.h"
+#include "../model/perm.h"
 #include "../model/snowflake.h"
 #include "../model/tenor.h"
 #include "../image.h"
@@ -326,6 +327,7 @@ static void channels_cb(int status, const char *body, void *ud){
             jl_val_t *name = o ? jl_obj_get(o, "name") : NULL;
             jl_val_t *nsfw = o ? jl_obj_get(o, "nsfw") : NULL;
             jl_val_t *parent = o ? jl_obj_get(o, "parent_id") : NULL;
+            jl_val_t *ows = o ? jl_obj_get(o, "permission_overwrites") : NULL;
             channel ch;
             if(!id || id->type != JL_STRING) continue;
             if(type && type->type == JL_NUMBER && (int)type->num != 0 &&
@@ -341,6 +343,7 @@ static void channels_cb(int status, const char *body, void *ud){
             if(nsfw && nsfw->type == JL_BOOL) ch.nsfw = (int)nsfw->num;
             if(parent && parent->type == JL_STRING)
                 ch.parent = sn_parse(parent->str);
+            overwrites_from_json(ows, &ch);
             store_put_channel(L->app->st, &ch);
         }
         log_msg("rest: %d channels for %llu", v->count,
@@ -1454,6 +1457,23 @@ static void gw_drop(main_ctx *L, uint64_t now, const char *why){
     log_msg("gw: dropped (%s)", why);
 }
 
+static uint64_t chan_perms(main_ctx *L, const channel *ch){
+    const guild *gu;
+    if(!ch || !ch->guild) return ~0ull;
+    gu = store_guild(L->app->st, ch->guild);
+    return perm_effective(ch, gu, gw_self_id(L->app->gw));
+}
+
+static int can_view_chan(main_ctx *L, const channel *ch){
+    if(!ch || !ch->guild) return 1;
+    return perm_can(chan_perms(L, ch), PERM_VIEW_CHANNEL);
+}
+
+static int can_send_chan(main_ctx *L, const channel *ch){
+    if(!ch || !ch->guild) return 1;
+    return perm_can(chan_perms(L, ch), PERM_SEND_MESSAGES);
+}
+
 static int cat_collapsed(const main_ctx *L, uint64_t id){
     int i;
     for(i = 0; i < L->cat_n; i++)
@@ -1495,7 +1515,8 @@ static void view_build(main_ctx *L, frame_view *v){
         nc = store_channels_for_guild(L->app->st, v->guilds[v->gi]->id, cids, 64);
         for(i = 0; i < nc; i++){
             const channel *c2 = store_channel(L->app->st, cids[i]);
-            if(c2 && c2->type == 4 && ncats < 16) cats[ncats++] = c2;
+            if(c2 && c2->type == 4 && ncats < 16 && can_view_chan(L, c2))
+                cats[ncats++] = c2;
         }
         for(c = 0; c < ncats; c++){
             if(v->nt < 64) v->text[v->nt++] = cats[c];
@@ -1503,14 +1524,16 @@ static void view_build(main_ctx *L, frame_view *v){
                 const channel *c2 = store_channel(L->app->st, cids[i]);
                 if(!c2 || c2->type != 0 || c2->parent != cats[c]->id) continue;
                 emitted[i] = 1;
-                if(!cat_collapsed(L, cats[c]->id)) v->text[v->nt++] = c2;
+                if(!cat_collapsed(L, cats[c]->id) && can_view_chan(L, c2))
+                    v->text[v->nt++] = c2;
             }
         }
         for(i = 0; i < nc && v->nt < 64; i++){
             const channel *c2;
             if(emitted[i]) continue;
             c2 = store_channel(L->app->st, cids[i]);
-            if(c2 && c2->type == 0) v->text[v->nt++] = c2;
+            if(c2 && c2->type == 0 && can_view_chan(L, c2))
+                v->text[v->nt++] = c2;
         }
     }
     nav_step(&L->cn, IE_NONE, v->nt);
@@ -2677,9 +2700,14 @@ int screen_main_run(app_state *st){
                     } else if(e == IE_RIGHT && L.gif_i + 1 < L.gif_n){
                         L.gif_i++;
                     } else if(e == IE_SELECT){
-                        send_message(&L, L.gif_chan, L.gif_list[L.gif_i].url,
-                                     0, 0);
-                        L.gifs = 0;
+                        if(can_send_chan(&L,
+                                         store_channel(L.app->st, L.gif_chan))){
+                            send_message(&L, L.gif_chan,
+                                         L.gif_list[L.gif_i].url, 0, 0);
+                            L.gifs = 0;
+                        } else {
+                            set_status(&L, "No permission to send");
+                        }
                     } else if(e == IE_GIF || e == IE_SEARCH){
                         gif_prompt(&L);
                     } else if(e == IE_BACK || e == IE_MENU){
@@ -2742,15 +2770,20 @@ int screen_main_run(app_state *st){
                     }
                 } else if(e == IE_SELECT){
                     if(L.focus == 2 && v.active){
-                        char text[1024];
-                        char tpath[96];
-                        memset(text, 0, sizeof text);
-                        snprintf(tpath, sizeof tpath,
-                                 "/api/v9/channels/%llu/typing",
-                                 (unsigned long long)v.active->id);
-                        rest_send(st->rest, "POST", tpath, NULL, NULL, NULL);
-                        if(ime_prompt("Message", v.active->name, text, sizeof text))
-                            send_message(&L, v.active->id, text, 0, 0);
+                        if(!can_send_chan(&L, v.active)){
+                            set_status(&L, "No permission to send");
+                        } else {
+                            char text[1024];
+                            char tpath[96];
+                            memset(text, 0, sizeof text);
+                            snprintf(tpath, sizeof tpath,
+                                     "/api/v9/channels/%llu/typing",
+                                     (unsigned long long)v.active->id);
+                            rest_send(st->rest, "POST", tpath, NULL, NULL, NULL);
+                            if(ime_prompt("Message", v.active->name, text,
+                                          sizeof text))
+                                send_message(&L, v.active->id, text, 0, 0);
+                        }
                     } else if(L.focus == 1 && v.nt > 0 &&
                               v.text[v.ci]->type == 4){
                         cat_toggle(&L, v.text[v.ci]->id);

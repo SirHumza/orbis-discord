@@ -64,7 +64,34 @@ static uint32_t role_color(const guild *gu, jl_val_t *ids){
     return color ? (0xFF000000u | color) : 0;
 }
 
-static void put_guild(store *st, jl_val_t *gobj){
+static void guild_self_perms(gateway *g, guild *gu, jl_val_t *gobj){
+    uint64_t self = gw_self_id(g);
+    jl_val_t *members = gw_obj(gobj, "members");
+    size_t i, k;
+    int j;
+    if(!self) return;
+    for(j = 0; j < gu->nroles; j++)
+        if(gu->roles[j].id == gu->id) gu->my_perms |= gu->roles[j].perms;
+    for(i = 0; i < count(members); i++){
+        jl_val_t *m = at(members, i);
+        jl_val_t *u = gw_obj(m, "user");
+        jl_val_t *roles;
+        if(gw_u64(u, "id") != self) continue;
+        roles = gw_obj(m, "roles");
+        for(k = 0; k < count(roles) && gu->my_nroles < 16; k++){
+            jl_val_t *rv = at(roles, k);
+            uint64_t rid = rv && rv->type == JL_STRING ? sn_parse(rv->str) : 0;
+            if(!rid) continue;
+            gu->my_roles[gu->my_nroles++] = rid;
+            for(j = 0; j < gu->nroles; j++)
+                if(gu->roles[j].id == rid) gu->my_perms |= gu->roles[j].perms;
+        }
+        break;
+    }
+}
+
+static void put_guild(gateway *g, jl_val_t *gobj){
+    store *st = gw_store(g);
     guild gu;
     jl_val_t *chans, *members;
     size_t i;
@@ -85,6 +112,7 @@ static void put_guild(store *st, jl_val_t *gobj){
             if(!r->id) continue;
             r->color = (uint32_t)gw_num(rj, "color");
             r->position = gw_num(rj, "position");
+            r->perms = gw_u64(rj, "permissions");
             cp(r->name, sizeof r->name, gw_string(rj, "name"));
             {
                 jl_val_t *h = gw_obj(rj, "hoist");
@@ -93,6 +121,7 @@ static void put_guild(store *st, jl_val_t *gobj){
             gu.nroles++;
         }
     }
+    guild_self_perms(g, &gu, gobj);
     store_put_guild(st, &gu);
 
     chans = gw_obj(gobj, "channels");
@@ -106,8 +135,10 @@ static void put_guild(store *st, jl_val_t *gobj){
         if(!ch.guild) ch.guild = gid;
         ch.type = gw_num(c, "type");
         ch.position = gw_num(c, "position");
+        ch.parent = gw_u64(c, "parent_id");
         ch.nsfw = gw_obj(c, "nsfw") && gw_obj(c, "nsfw")->type == JL_BOOL ? (int)gw_obj(c, "nsfw")->num : 0;
         cp(ch.name, sizeof ch.name, gw_string(c, "name"));
+        overwrites_from_json(gw_obj(c, "permission_overwrites"), &ch);
         store_put_channel(st, &ch);
     }
 
@@ -137,7 +168,7 @@ static int on_ready(gateway *g, jl_val_t *d){
     user = gw_obj(d, "user");
     gw_on_ready(g, gw_string(d, "session_id"), gw_string(user, "username"), gw_u64(user, "id"));
     guilds = gw_obj(d, "guilds");
-    for(i = 0; i < count(guilds); i++) put_guild(st, at(guilds, i));
+    for(i = 0; i < count(guilds); i++) put_guild(g, at(guilds, i));
     pcs = gw_obj(d, "private_channels");
     for(i = 0; i < count(pcs); i++){
         jl_val_t *c = at(pcs, i);
@@ -204,7 +235,7 @@ static int on_message_delete(gateway *g, jl_val_t *d){
 }
 
 static int on_guild_create(gateway *g, jl_val_t *d){
-    put_guild(gw_store(g), d);
+    put_guild(g, d);
     return GW_EV_READY;
 }
 
@@ -228,6 +259,18 @@ static int on_channel_put(gateway *g, jl_val_t *d){
     ch.position = gw_num(d, "position");
     ch.parent = gw_u64(d, "parent_id");
     cp(ch.name, sizeof ch.name, gw_string(d, "name"));
+    {
+        jl_val_t *ows = gw_obj(d, "permission_overwrites");
+        if(ows && ows->type == JL_ARRAY){
+            overwrites_from_json(ows, &ch);
+        } else {
+            old = store_channel(gw_store(g), ch.id);
+            if(old){
+                memcpy(ch.ow, old->ow, sizeof ch.ow);
+                ch.now = old->now;
+            }
+        }
+    }
     if(!ch.name[0] || !ch.guild){
         old = store_channel(gw_store(g), ch.id);
         if(old){
@@ -254,6 +297,23 @@ static int on_member_update(gateway *g, jl_val_t *d){
                                role_color(gu, roles));
         store_set_member_top_role(gw_store(g), guild, user,
                                   top_hoisted_role(gu, roles));
+        if(gu && user == gw_self_id(g)){
+            uint64_t p = 0, ids[16];
+            int n = 0, j;
+            size_t k;
+            for(j = 0; j < gu->nroles; j++)
+                if(gu->roles[j].id == guild) p |= gu->roles[j].perms;
+            for(k = 0; k < count(roles) && n < 16; k++){
+                jl_val_t *rv = at(roles, k);
+                uint64_t rid = rv && rv->type == JL_STRING
+                                   ? sn_parse(rv->str) : 0;
+                if(!rid) continue;
+                ids[n++] = rid;
+                for(j = 0; j < gu->nroles; j++)
+                    if(gu->roles[j].id == rid) p |= gu->roles[j].perms;
+            }
+            store_set_guild_perms(gw_store(g), guild, p, ids, n);
+        }
     }
     return GW_EV_PRESENCE;
 }

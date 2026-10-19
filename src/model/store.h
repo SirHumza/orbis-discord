@@ -13,6 +13,7 @@ typedef struct {
     int position;
     char name[64];
     int hoist;
+    uint64_t perms;
 } role;
 
 typedef struct {
@@ -63,6 +64,14 @@ typedef struct message {
     struct message *next;
 } message;
 
+#define CHAN_MAX_OW 8
+
+typedef struct {
+    uint64_t id;
+    int type;
+    uint64_t allow, deny;
+} overwrite;
+
 typedef struct channel {
     uint64_t id, guild;
     int type;
@@ -71,6 +80,8 @@ typedef struct channel {
     int nsfw, position;
     uint64_t last_read;
     uint64_t parent;
+    overwrite ow[CHAN_MAX_OW];
+    int now;
 } channel;
 
 typedef struct guild {
@@ -79,6 +90,9 @@ typedef struct guild {
     char icon_url[256];
     role roles[GUILD_MAX_ROLES];
     int nroles;
+    uint64_t my_perms;
+    uint64_t my_roles[16];
+    int my_nroles;
 } guild;
 
 typedef struct member {
@@ -125,6 +139,8 @@ size_t store_guilds(store *, const guild **out, size_t cap);
 size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
 size_t store_guild_hoisted_roles(store *, uint64_t guild_id, const role **out, size_t cap);
 void store_set_member_top_role(store *, uint64_t guild_id, uint64_t user_id, uint64_t role);
+void store_set_guild_perms(store *, uint64_t guild_id, uint64_t perms,
+                           const uint64_t *roles, int nroles);
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);
 void store_set_member_name(store *, uint64_t guild_id, uint64_t user_id, const char *name);
 void store_set_member_color(store *, uint64_t guild_id, uint64_t user_id, uint32_t color);

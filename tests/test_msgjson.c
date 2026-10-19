@@ -250,6 +250,32 @@ TEST(test_msgjson_recipients_invalid){
     jl_free(v);
 }
 
+TEST(test_msgjson_overwrites){
+    const char *json =
+        "{\"permission_overwrites\":["
+        "{\"id\":\"10\",\"type\":0,\"allow\":\"1024\",\"deny\":\"0\"},"
+        "{\"id\":\"77\",\"type\":1,\"allow\":\"0\",\"deny\":\"2048\"},"
+        "{\"type\":0}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    channel ch;
+    memset(&ch, 0, sizeof ch);
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(overwrites_from_json(jl_obj_get(v, "permission_overwrites"),
+                                       &ch), 2);
+    ASSERT_EQ_INT(ch.now, 2);
+    ASSERT_EQ_INT(ch.ow[0].id, 10);
+    ASSERT_EQ_INT(ch.ow[0].type, 0);
+    ASSERT_EQ_INT(ch.ow[0].allow, 1024);
+    ASSERT_EQ_INT(ch.ow[0].deny, 0);
+    ASSERT_EQ_INT(ch.ow[1].id, 77);
+    ASSERT_EQ_INT(ch.ow[1].type, 1);
+    ASSERT_EQ_INT(ch.ow[1].deny, 2048);
+    ASSERT_EQ_INT(overwrites_from_json(NULL, &ch), 0);
+    ASSERT_EQ_INT(ch.now, 0);
+    ASSERT_EQ_INT(overwrites_from_json(NULL, NULL), 0);
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
@@ -265,4 +291,5 @@ void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_emoji_item_invalid();
     g_tests_run++; test_msgjson_recipients();
     g_tests_run++; test_msgjson_recipients_invalid();
+    g_tests_run++; test_msgjson_overwrites();
 }
