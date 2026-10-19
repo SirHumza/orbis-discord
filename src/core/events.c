@@ -24,6 +24,26 @@ static size_t count(jl_val_t *arr){
     return arr && arr->type == JL_ARRAY ? (size_t)arr->count : 0;
 }
 
+static uint32_t role_color(const guild *gu, jl_val_t *ids){
+    uint32_t color = 0;
+    int best = -1;
+    size_t k;
+    int i;
+    if(!gu) return 0;
+    for(k = 0; k < count(ids); k++){
+        jl_val_t *rv = at(ids, k);
+        uint64_t rid = rv && rv->type == JL_STRING ? sn_parse(rv->str) : 0;
+        for(i = 0; i < gu->nroles; i++){
+            if(gu->roles[i].id == rid && gu->roles[i].color &&
+               gu->roles[i].position > best){
+                best = gu->roles[i].position;
+                color = gu->roles[i].color;
+            }
+        }
+    }
+    return color ? (0xFF000000u | color) : 0;
+}
+
 static void put_guild(store *st, jl_val_t *gobj){
     guild gu;
     jl_val_t *chans, *members;
@@ -36,6 +56,18 @@ static void put_guild(store *st, jl_val_t *gobj){
     gu.id = gid;
     cp(gu.name, sizeof gu.name, gw_string(gobj, "name"));
     cdn_guild_icon_url(gu.icon_url, sizeof gu.icon_url, gid, gw_string(gobj, "icon"));
+    {
+        jl_val_t *roles = gw_obj(gobj, "roles");
+        for(i = 0; i < count(roles) && gu.nroles < GUILD_MAX_ROLES; i++){
+            jl_val_t *rj = at(roles, i);
+            role *r = &gu.roles[gu.nroles];
+            r->id = gw_u64(rj, "id");
+            if(!r->id) continue;
+            r->color = (uint32_t)gw_num(rj, "color");
+            r->position = gw_num(rj, "position");
+            gu.nroles++;
+        }
+    }
     store_put_guild(st, &gu);
 
     chans = gw_obj(gobj, "channels");
@@ -66,6 +98,7 @@ static void put_guild(store *st, jl_val_t *gobj){
         cp(mem.name, sizeof mem.name, gw_string(u, "username"));
         cdn_avatar_url(mem.avatar_url, sizeof mem.avatar_url, mem.user,
                        gw_string(u, "avatar"));
+        mem.color = role_color(&gu, gw_obj(m, "roles"));
         mem.online = gw_string(m, "status")[0] != 0 && strcmp(gw_string(m, "status"), "offline") != 0;
         store_put_member(st, &mem);
     }
@@ -173,9 +206,13 @@ static int on_channel_put(gateway *g, jl_val_t *d){
 static int on_member_update(gateway *g, jl_val_t *d){
     uint64_t guild = gw_u64(d, "guild_id");
     jl_val_t *u = gw_obj(d, "user");
+    jl_val_t *roles = gw_obj(d, "roles");
     uint64_t user = gw_u64(u, "id");
     if(!guild || !user) return GW_EV_NONE;
     if(gw_string(u, "username")[0]) store_set_member_name(gw_store(g), guild, user, gw_string(u, "username"));
+    if(roles && roles->type == JL_ARRAY)
+        store_set_member_color(gw_store(g), guild, user,
+                               role_color(store_guild(gw_store(g), guild), roles));
     return GW_EV_PRESENCE;
 }
 

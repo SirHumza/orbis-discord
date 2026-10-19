@@ -5,6 +5,13 @@
 
 #define MSG_MAX_ATT 4
 #define MSG_MAX_EMB 2
+#define GUILD_MAX_ROLES 64
+
+typedef struct {
+    uint64_t id;
+    uint32_t color;
+    int position;
+} role;
 
 typedef struct {
     char url[320];
@@ -66,12 +73,15 @@ typedef struct guild {
     uint64_t id;
     char name[100];
     char icon_url[256];
+    role roles[GUILD_MAX_ROLES];
+    int nroles;
 } guild;
 
 typedef struct member {
     uint64_t user, guild;
     char name[64];
     char avatar_url[128];
+    uint32_t color;
     int online;
 } member;
 
@@ -86,6 +96,7 @@ const message *store_messages(store *, uint64_t chan);
 uint64_t store_revision(store *);
 void store_put_channel(store *, const channel *);
 const channel *store_channel(store *, uint64_t id);
+const guild *store_guild(store *, uint64_t id);
 void store_put_guild(store *, const guild *);
 void store_put_member(store *, const member *);
 size_t store_channels_for_guild(store *, uint64_t guild_id, uint64_t *out, size_t cap);
@@ -94,6 +105,7 @@ size_t store_guilds(store *, const guild **out, size_t cap);
 size_t store_members(store *, uint64_t guild_id, const member **out, size_t cap);
 void store_set_member_online(store *, uint64_t guild_id, uint64_t user_id, int online);
 void store_set_member_name(store *, uint64_t guild_id, uint64_t user_id, const char *name);
+void store_set_member_color(store *, uint64_t guild_id, uint64_t user_id, uint32_t color);
 void store_react_add(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
 void store_react_remove(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
 void store_react_clear(store *, uint64_t chan, uint64_t msg);

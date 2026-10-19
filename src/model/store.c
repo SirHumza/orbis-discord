@@ -309,6 +309,14 @@ const channel *store_channel(store *st, uint64_t id){
     return NULL;
 }
 
+const guild *store_guild(store *st, uint64_t id){
+    size_t i;
+    if(!st) return NULL;
+    for(i = 0; i < st->nguilds; i++)
+        if(st->guilds[i].id == id) return &st->guilds[i];
+    return NULL;
+}
+
 void store_put_guild(store *st, const guild *in){
     size_t i;
     if(!st || !in) return;
@@ -414,5 +422,14 @@ void store_set_member_name(store *st, uint64_t guild_id, uint64_t user_id, const
     for(i = 0; i < st->nmembers; i++)
         if(st->members[i].guild == guild_id && st->members[i].user == user_id){
             snprintf(st->members[i].name, sizeof st->members[i].name, "%s", name); return;
+        }
+}
+
+void store_set_member_color(store *st, uint64_t guild_id, uint64_t user_id, uint32_t color){
+    size_t i;
+    if(!st) return;
+    for(i = 0; i < st->nmembers; i++)
+        if(st->members[i].guild == guild_id && st->members[i].user == user_id){
+            st->members[i].color = color; return;
         }
 }

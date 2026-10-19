@@ -179,6 +179,29 @@ TEST(test_events_mentions){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_role_colors){
+    setup();
+    const member *ms[4];
+    size_t n, i;
+    uint32_t bob = 0, ann = 1;
+    feed("{\"op\":0,\"s\":1,\"t\":\"GUILD_CREATE\",\"d\":{\"id\":\"9\",\"name\":\"G\",\"channels\":[],\"roles\":[{\"id\":\"1\",\"color\":0,\"position\":0},{\"id\":\"2\",\"color\":16711680,\"position\":2},{\"id\":\"3\",\"color\":255,\"position\":5}],\"members\":[{\"user\":{\"id\":\"7\",\"username\":\"bob\"},\"roles\":[\"2\",\"3\"]},{\"user\":{\"id\":\"8\",\"username\":\"ann\"},\"roles\":[\"1\"]}]}}");
+    n = store_members(s, 9, ms, 4);
+    ASSERT_EQ_INT(n, 2);
+    for(i = 0; i < n; i++){
+        if(ms[i]->user == 7) bob = ms[i]->color;
+        if(ms[i]->user == 8) ann = ms[i]->color;
+    }
+    ASSERT_EQ_INT(bob, 0xFF0000FFu);
+    ASSERT_EQ_INT(ann, 0);
+    feed("{\"op\":0,\"s\":2,\"t\":\"GUILD_MEMBER_UPDATE\",\"d\":{\"guild_id\":\"9\",\"user\":{\"id\":\"7\",\"username\":\"bob\"},\"roles\":[\"2\"]}}");
+    bob = 0;
+    n = store_members(s, 9, ms, 4);
+    for(i = 0; i < n; i++)
+        if(ms[i]->user == 7) bob = ms[i]->color;
+    ASSERT_EQ_INT(bob, 0xFFFF0000u);
+    gw_free(g); store_free(s);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -193,4 +216,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_typing();
     g_tests_run++; test_events_reply_preserved_on_edit();
     g_tests_run++; test_events_mentions();
+    g_tests_run++; test_events_role_colors();
 }

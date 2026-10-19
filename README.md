@@ -23,6 +23,7 @@ rest of the feature set are the next milestones.
 | PNG/JPEG/GIF decode, LRU cache, save to `/data/orbis-discord/downloads` | Done | host tests |
 | Message attachments: image/GIF thumbnails and file rows, CDN fetch wired | Done | host tests, PS4 elf |
 | Avatars (chat, members, DMs) and guild icons from the CDN | Done | host tests, PS4 elf |
+| Role colors: guild roles parsed, author/member names colored | Done | host tests, PS4 elf |
 | Embeds: color bar, title, description wrap, image/thumbnail rows | Done | host tests, PS4 elf |
 | Reactions: chips, counts, me highlight, live gateway updates | Done | host tests, PS4 elf |
 | Typing indicators: TYPING_START, composer strip, /typing POST | Done | host tests, PS4 elf |
@@ -45,7 +46,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (132 checks) + fixtures
+tests/        host test suite (133 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -97,7 +98,8 @@ Phase 2, messaging parity:
 - [x] Typing indicators: TYPING_START receive, composer strip, /typing POST on composer open
 - [x] Mentions: @user/#channel/:emoji: token resolution, mentions-me row highlight
 - [ ] Unread badges, notification sounds
-- [ ] Avatars/guild icons from the CDN, member profiles, role colors
+- [x] Avatars/guild icons from the CDN, role colors on author/member names
+- [ ] Member profiles, role hoisting/sections
 - [ ] DMs and group DMs, friends list, presence control
 - [ ] Threads, forums, invites, channel categories, permissions
 - [ ] Slash commands, context menus, keyboard/pad shortcuts, settings screen

@@ -587,7 +587,7 @@ static void draw_members(main_ctx *L, const frame_view *v){
             ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
         ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_ONLINE);
         trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
-        ui_text(MEMBER_X + 44, y, nb, UI_TEXT, 16);
+        ui_text(MEMBER_X + 44, y, nb, ms[i]->color ? ms[i]->color : UI_TEXT, 16);
         y += 28;
     }
     snprintf(buf, sizeof buf, "OFFLINE - %d", (int)n - on);
@@ -601,9 +601,20 @@ static void draw_members(main_ctx *L, const frame_view *v){
             ui_img(ms[i]->avatar_url, MEMBER_X + 16, y + 4, 20, 20);
         ui_rect(MEMBER_X + 28, y + 16, 8, 8, UI_OFFLINE);
         trunc_utf8(nb, sizeof nb, ms[i]->name, 20);
-        ui_text(MEMBER_X + 44, y, nb, UI_TEXT_DIM, 16);
+        ui_text(MEMBER_X + 44, y, nb, ms[i]->color ? ms[i]->color : UI_TEXT_DIM, 16);
         y += 28;
     }
+}
+
+static uint32_t user_color(store *st, uint64_t chan, uint64_t user){
+    const channel *ch = store_channel(st, chan);
+    const member *ms[200];
+    size_t n, i;
+    if(!ch || !ch->guild) return UI_TEXT;
+    n = store_members(st, ch->guild, ms, 200);
+    for(i = 0; i < n; i++)
+        if(ms[i]->user == user && ms[i]->color) return ms[i]->color;
+    return UI_TEXT;
 }
 
 static void draw_messages(main_ctx *L){
@@ -702,7 +713,8 @@ static void draw_messages(main_ctx *L){
             ui_rrect(CHAT_X + MSG_PAD, y + 1, 40, 40, 20, UI_CHANNEL_BG);
             ui_img(ln->m->author_avatar, CHAT_X + MSG_PAD, y + 1, 40, 40);
             tx = CHAT_X + MSG_PAD + MSG_INDENT;
-            ui_text(tx, y + 3, ln->m->author_name, UI_TEXT, 16);
+            ui_text(tx, y + 3, ln->m->author_name,
+                    user_color(L->app->st, ln->m->chan, ln->m->author_id), 16);
             nw = ui_text_width(ln->m->author_name, 16);
             tx += nw + 12;
             ui_text(tx, y + 5, tbuf, UI_TEXT_DIM, 12);
