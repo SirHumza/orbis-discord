@@ -39,6 +39,28 @@ void rest_free(rest *r){
     free(r);
 }
 
+int rest_path_encode(const char *in, char *out, size_t cap){
+    static const char hex[] = "0123456789ABCDEF";
+    size_t n = 0;
+    if(!in || !out || cap == 0) return -1;
+    for(; *in; in++){
+        unsigned char c = (unsigned char)*in;
+        if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' ||
+           c == '~'){
+            if(n + 1 >= cap) return -1;
+            out[n++] = (char)c;
+        } else {
+            if(n + 3 >= cap) return -1;
+            out[n++] = '%';
+            out[n++] = hex[c >> 4];
+            out[n++] = hex[c & 15];
+        }
+    }
+    out[n] = 0;
+    return (int)n;
+}
+
 int rest_send(rest *r, const char *method, const char *path, const char *body,
               rest_cb cb, void *ud){
     req *q;

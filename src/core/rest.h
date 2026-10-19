@@ -9,6 +9,7 @@ typedef struct rest rest;
 
 rest *rest_new(http *, const char *token);
 void rest_free(rest *);
+int rest_path_encode(const char *in, char *out, size_t cap);
 int rest_send(rest *, const char *method, const char *path, const char *body,
               rest_cb cb, void *ud);
 /* GET /channels/{chan}/messages?limit=50[&before={before}] */

@@ -207,6 +207,17 @@ TEST(test_rest_retry_after_from_json_body){
     http_free(h);
 }
 
+TEST(test_rest_path_encode){
+    char out[64];
+    ASSERT_EQ_INT(rest_path_encode("cat:123", out, sizeof out), 9);
+    ASSERT_EQ_STR(out, "cat%3A123");
+    ASSERT_EQ_INT(rest_path_encode("\xF0\x9F\x91\x8D", out, sizeof out), 12);
+    ASSERT_EQ_STR(out, "%F0%9F%91%8D");
+    ASSERT_EQ_INT(rest_path_encode("a b", out, sizeof out), 5);
+    ASSERT_EQ_STR(out, "a%20b");
+    ASSERT_EQ_INT(rest_path_encode("ab", out, 2), -1);
+}
+
 void run_rest_tests(void){
     g_tests_run++; test_http_get_headers_and_parse();
     g_tests_run++; test_http_post_body();
@@ -218,4 +229,5 @@ void run_rest_tests(void){
     g_tests_run++; test_http_lowercase_content_length();
     g_tests_run++; test_http_chunked_body();
     g_tests_run++; test_rest_retry_after_from_json_body();
+    g_tests_run++; test_rest_path_encode();
 }

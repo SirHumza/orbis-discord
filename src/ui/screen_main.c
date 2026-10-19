@@ -106,7 +106,9 @@ typedef struct {
     int menu;
     int menu_i;
     int menu_n;
-    int menu_items[4];
+    int menu_items[5];
+    int react_pick;
+    int react_i;
 } main_ctx;
 
 typedef struct {
@@ -641,11 +643,18 @@ static void sel_begin(main_ctx *L, uint64_t chan){
     sel_into_view(L);
 }
 
+static const char *QUICK_EMOJI[] = {
+    "\xF0\x9F\x91\x8D", "\xE2\x9D\xA4\xEF\xB8\x8F",
+    "\xF0\x9F\x98\x82", "\xF0\x9F\x8E\x89",
+    "\xF0\x9F\x94\xA5", "\xF0\x9F\x91\x80"
+};
+
 static const char *menu_label(int item){
     switch(item){
     case 1: return "Reply";
     case 2: return "Edit";
     case 3: return "Delete";
+    case 4: return "React";
     default: return "Cancel";
     }
 }
@@ -655,6 +664,7 @@ static void menu_open(main_ctx *L, const message *m){
               !m->pending;
     L->menu_n = 0;
     L->menu_items[L->menu_n++] = 1;
+    L->menu_items[L->menu_n++] = 4;
     if(own){
         L->menu_items[L->menu_n++] = 2;
         L->menu_items[L->menu_n++] = 3;
@@ -662,6 +672,48 @@ static void menu_open(main_ctx *L, const message *m){
     L->menu_items[L->menu_n++] = 0;
     L->menu_i = 0;
     L->menu = 1;
+}
+
+static int react_has_me(const message *m, const char *emoji){
+    int i;
+    for(i = 0; i < m->nreact; i++)
+        if(m->react[i].me && strcmp(m->react[i].emoji, emoji) == 0) return 1;
+    return 0;
+}
+
+typedef struct {
+    main_ctx *ctx;
+} react_op;
+
+static void react_cb(int status, const char *body, void *ud){
+    react_op *f = ud;
+    (void)body;
+    if(status != 200 && status != 204){
+        log_msg("rest: reaction failed (%d)", status);
+        set_status(f->ctx, "Reaction failed");
+    } else {
+        log_msg("rest: reaction ok");
+    }
+    free(f);
+}
+
+static void react_toggle(main_ctx *L, const message *m, const char *emoji){
+    char enc[256], path[384];
+    react_op *f;
+    int remove = react_has_me(m, emoji);
+    if(rest_path_encode(emoji, enc, sizeof enc) < 0) return;
+    snprintf(path, sizeof path,
+             "/api/v9/channels/%llu/messages/%llu/reactions/%s/@me",
+             (unsigned long long)m->chan, (unsigned long long)m->id, enc);
+    f = calloc(1, sizeof *f);
+    if(!f) return;
+    f->ctx = L;
+    if(rest_send(L->app->rest, remove ? "DELETE" : "PUT", path, NULL,
+                 react_cb, f) != 0){
+        free(f);
+        set_status(L, "Reaction failed");
+        return;
+    }
 }
 
 static void menu_choose(main_ctx *L, const message *m, int item){
@@ -677,6 +729,9 @@ static void menu_choose(main_ctx *L, const message *m, int item){
             edit_message(L, m, text);
     } else if(item == 3){
         delete_message(L, m);
+    } else if(item == 4){
+        L->react_pick = 1;
+        L->react_i = 0;
     }
 }
 
@@ -929,6 +984,21 @@ static void draw_viewer(main_ctx *L){
     snprintf(cap, sizeof cap, "%d / %d   UP/DOWN browse   CROSS close",
              L->view_i + 1, L->view_n);
     ui_text((SCR_W - ui_text_width(cap, 14)) / 2, SCR_H - 52, cap, UI_TEXT, 14);
+}
+
+static void draw_react_pick(main_ctx *L){
+    int n = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+    int cell = 52, w = 32 + n * cell, h = 110;
+    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
+    ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
+    ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
+    ui_text(x + 16, y + 10, "Add reaction", UI_TEXT, 14);
+    for(i = 0; i < n; i++){
+        int cx = x + 16 + i * cell;
+        if(i == L->react_i) ui_rrect(cx, y + 30, 44, 44, 8, UI_BLURPLE);
+        ui_text(cx + 8, y + 38, QUICK_EMOJI[i], UI_TEXT, 28);
+    }
+    ui_text(x + 16, y + 84, "CROSS toggle   CIRCLE close", UI_TEXT_DIM, 12);
 }
 
 static void draw_menu(main_ctx *L){
@@ -1251,10 +1321,32 @@ int screen_main_run(app_state *st){
                             L.app->st, L.chan_loaded, L.sel_id);
                         int item = L.menu_items[L.menu_i];
                         L.menu = 0;
-                        L.sel = 0;
-                        if(m) menu_choose(&L, m, item);
+                        if(m){
+                            if(item != 4) L.sel = 0;
+                            menu_choose(&L, m, item);
+                        } else {
+                            L.sel = 0;
+                        }
                     } else if(e == IE_BACK || e == IE_MENU){
                         L.menu = 0;
+                        L.sel = 0;
+                    }
+                    continue;
+                }
+                if(L.react_pick){
+                    int n = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
+                    if(e == IE_LEFT || e == IE_UP){
+                        L.react_i = (L.react_i + n - 1) % n;
+                    } else if(e == IE_RIGHT || e == IE_DOWN){
+                        L.react_i = (L.react_i + 1) % n;
+                    } else if(e == IE_SELECT){
+                        const message *m = store_message(
+                            L.app->st, L.chan_loaded, L.sel_id);
+                        if(m) react_toggle(&L, m, QUICK_EMOJI[L.react_i]);
+                        L.react_pick = 0;
+                        L.sel = 0;
+                    } else if(e == IE_BACK || e == IE_MENU){
+                        L.react_pick = 0;
                         L.sel = 0;
                     }
                     continue;
@@ -1340,6 +1432,7 @@ int screen_main_run(app_state *st){
         draw_main(&L, &v);
         if(L.viewer) draw_viewer(&L);
         if(L.menu) draw_menu(&L);
+        if(L.react_pick) draw_react_pick(&L);
         ui_frame_end();
         ui_pump();
         usleep(15000);

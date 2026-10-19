@@ -33,6 +33,7 @@ rest of the feature set are the next milestones.
 | Unread dots on channel/DM rows (session-scoped read state) | Done | host tests, PS4 elf |
 | Image viewer: fullscreen fit, UP/DOWN cycling, TRIANGLE/CROSS close | Done | host tests, PS4 elf |
 | Message actions: SQUARE select, UP/DOWN step, CROSS menu (reply/edit/delete) | Done | host tests, PS4 elf |
+| Reaction interaction: quick picker, REST PUT/DELETE own reaction | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -49,7 +50,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (138 checks) + fixtures
+tests/        host test suite (139 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -96,7 +97,8 @@ Phase 2, messaging parity:
 - [x] Image viewer: fullscreen fit with UP/DOWN cycling, TRIANGLE opens, CROSS closes
 - [x] Reaction rendering: chip row, counts, me highlight, live gateway updates
 - [x] Stickers: PNG/APNG rendered, GIF first frame, Lottie name fallback
-- [ ] Reaction interaction (REST PUT/DELETE), custom emoji picker, GIF picker
+- [x] Reaction interaction: quick-reaction picker with REST PUT/DELETE
+- [ ] Custom emoji picker, GIF picker
 - [x] Reply previews: referenced-message preview rows, preserved across edits
 - [x] Reply send (REST), own-message edit/delete via SQUARE-selected action menu
 - [ ] Pins, message search
