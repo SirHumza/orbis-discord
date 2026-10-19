@@ -94,4 +94,7 @@ void store_react_add(store *, uint64_t chan, uint64_t msg, const char *emoji, in
 void store_react_remove(store *, uint64_t chan, uint64_t msg, const char *emoji, int me);
 void store_react_clear(store *, uint64_t chan, uint64_t msg);
 void store_react_clear_emoji(store *, uint64_t chan, uint64_t msg, const char *emoji);
+void store_typing(store *, uint64_t chan, uint64_t user, const char *name, int64_t now_s);
+int store_typing_count(store *, uint64_t chan, int64_t now_s);
+void store_typing_str(store *, uint64_t chan, int64_t now_s, char *out, size_t cap);
 #endif

@@ -5,11 +5,19 @@
 #include <stdio.h>
 
 #define GROUP_WINDOW_MS 300000ULL
+#define TYPING_MAX 8
+#define TYPING_TTL_S 8
 
 typedef struct {
     uint64_t id;
     message *head, *tail;
 } chan_msgs;
+
+typedef struct {
+    uint64_t chan, user;
+    char name[64];
+    int64_t expires;
+} typing_entry;
 
 struct store {
     chan_msgs *chans;
@@ -21,6 +29,7 @@ struct store {
     member *members;
     size_t nmembers, capmembers;
     uint64_t rev;
+    typing_entry typing[TYPING_MAX];
 };
 
 store *store_new(void){ return calloc(1, sizeof(store)); }
@@ -207,6 +216,67 @@ void store_react_clear_emoji(store *st, uint64_t chan, uint64_t msg,
             return;
         }
     }
+}
+
+static void typing_prune(store *st, int64_t now_s){
+    int i;
+    for(i = 0; i < TYPING_MAX; i++)
+        if(st->typing[i].user && st->typing[i].expires <= now_s)
+            st->typing[i].user = 0;
+}
+
+void store_typing(store *st, uint64_t chan, uint64_t user, const char *name,
+                  int64_t now_s){
+    int i, victim = 0;
+    if(!st || !chan || !user) return;
+    typing_prune(st, now_s);
+    for(i = 0; i < TYPING_MAX; i++){
+        if(st->typing[i].user == user && st->typing[i].chan == chan){
+            if(name && name[0])
+                snprintf(st->typing[i].name, sizeof st->typing[i].name, "%s",
+                         name);
+            st->typing[i].expires = now_s + TYPING_TTL_S;
+            return;
+        }
+        if(!st->typing[i].user){ victim = i; break; }
+        if(st->typing[i].expires < st->typing[victim].expires) victim = i;
+    }
+    st->typing[victim].chan = chan;
+    st->typing[victim].user = user;
+    snprintf(st->typing[victim].name, sizeof st->typing[victim].name, "%s",
+             name && name[0] ? name : "Someone");
+    st->typing[victim].expires = now_s + TYPING_TTL_S;
+}
+
+int store_typing_count(store *st, uint64_t chan, int64_t now_s){
+    int i, n = 0;
+    if(!st) return 0;
+    typing_prune(st, now_s);
+    for(i = 0; i < TYPING_MAX; i++)
+        if(st->typing[i].user && st->typing[i].chan == chan) n++;
+    return n;
+}
+
+void store_typing_str(store *st, uint64_t chan, int64_t now_s, char *out,
+                      size_t cap){
+    int i, n = 0, total;
+    char names[2][64];
+    if(!out || cap == 0) return;
+    out[0] = 0;
+    if(!st) return;
+    total = store_typing_count(st, chan, now_s);
+    if(total == 0) return;
+    for(i = 0; i < TYPING_MAX && n < 2; i++){
+        if(!st->typing[i].user || st->typing[i].chan != chan) continue;
+        snprintf(names[n], sizeof names[n], "%s", st->typing[i].name);
+        n++;
+    }
+    if(total == 1)
+        snprintf(out, cap, "%s is typing...", names[0]);
+    else if(total == 2)
+        snprintf(out, cap, "%s and %s are typing...", names[0], names[1]);
+    else
+        snprintf(out, cap, "several people are typing...");
 }
 
 const message *store_messages(store *st, uint64_t chan){

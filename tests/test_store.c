@@ -202,6 +202,34 @@ TEST(test_store_reactions){
     store_free(st);
 }
 
+TEST(test_store_typing){
+    store *st = store_new();
+    char out[160];
+    store_typing(st, 1, 7, "bob", 100);
+    ASSERT_EQ_INT(store_typing_count(st, 1, 100), 1);
+    store_typing_str(st, 1, 100, out, sizeof out);
+    ASSERT_EQ_STR(out, "bob is typing...");
+    ASSERT_EQ_INT(store_typing_count(st, 2, 100), 0);
+    store_typing_str(st, 2, 100, out, sizeof out);
+    ASSERT_EQ_STR(out, "");
+    store_typing(st, 1, 8, "alice", 100);
+    store_typing_str(st, 1, 100, out, sizeof out);
+    ASSERT_EQ_STR(out, "bob and alice are typing...");
+    store_typing(st, 1, 9, "carl", 100);
+    store_typing_str(st, 1, 100, out, sizeof out);
+    ASSERT_EQ_STR(out, "several people are typing...");
+    ASSERT_EQ_INT(store_typing_count(st, 1, 107), 3);
+    ASSERT_EQ_INT(store_typing_count(st, 1, 108), 0);
+    store_typing_str(st, 1, 108, out, sizeof out);
+    ASSERT_EQ_STR(out, "");
+    store_typing(st, 1, 7, "bob", 200);
+    store_typing(st, 1, 7, "bobby", 200);
+    ASSERT_EQ_INT(store_typing_count(st, 1, 200), 1);
+    store_typing_str(st, 1, 200, out, sizeof out);
+    ASSERT_EQ_STR(out, "bobby is typing...");
+    store_free(st);
+}
+
 void run_store_tests(void){
     g_tests_run++; test_snowflake_parse_format();
     g_tests_run++; test_snowflake_timestamp();
@@ -215,4 +243,5 @@ void run_store_tests(void){
     g_tests_run++; test_store_channels_for_guild();
     g_tests_run++; test_store_revision_tracks_mutations();
     g_tests_run++; test_store_reactions();
+    g_tests_run++; test_store_typing();
 }

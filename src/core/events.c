@@ -1,5 +1,6 @@
 #include "events.h"
 #include "gateway.h"
+#include "clock.h"
 #include "snowflake.h"
 #include "store.h"
 #include "../model/cdnurl.h"
@@ -201,6 +202,16 @@ static int on_react_clear_emoji(gateway *g, jl_val_t *d){
     return GW_EV_MESSAGE;
 }
 
+static int on_typing(gateway *g, jl_val_t *d){
+    uint64_t chan = gw_u64(d, "channel_id");
+    uint64_t user = gw_u64(d, "user_id");
+    const char *name = gw_string(gw_obj(gw_obj(d, "member"), "user"), "username");
+    if(!name[0]) name = gw_string(gw_obj(d, "user"), "username");
+    if(!chan || !user) return GW_EV_NONE;
+    store_typing(gw_store(g), chan, user, name, orbis_mono_s());
+    return GW_EV_NONE;
+}
+
 int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!g || !t || !d) return GW_EV_NONE;
     if(!strcmp(t, "READY")) return on_ready(g, d);
@@ -215,5 +226,6 @@ int events_dispatch(gateway *g, const char *t, jl_val_t *d){
     if(!strcmp(t, "MESSAGE_REACTION_REMOVE")) return on_react(g, d, 0);
     if(!strcmp(t, "MESSAGE_REACTION_REMOVE_ALL")) return on_react_clear(g, d);
     if(!strcmp(t, "MESSAGE_REACTION_REMOVE_EMOJI")) return on_react_clear_emoji(g, d);
+    if(!strcmp(t, "TYPING_START")) return on_typing(g, d);
     return GW_EV_NONE;
 }

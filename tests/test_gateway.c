@@ -1,5 +1,6 @@
 #include "tests.h"
 #include "../src/core/gateway.h"
+#include "../src/core/clock.h"
 #include "../src/model/store.h"
 
 static store *s;
@@ -136,6 +137,22 @@ TEST(test_events_reactions){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_typing){
+    setup();
+    char out[160];
+    feed("{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{\"session_id\":\"x\",\"user\":{\"id\":\"5\",\"username\":\"me\"},\"guilds\":[],\"private_channels\":[]}}");
+    feed("{\"op\":0,\"s\":2,\"t\":\"TYPING_START\",\"d\":{\"channel_id\":\"100\",\"user_id\":\"7\",\"member\":{\"user\":{\"id\":\"7\",\"username\":\"bob\"}}}}");
+    store_typing_str(s, 100, orbis_mono_s(), out, sizeof out);
+    ASSERT_EQ_STR(out, "bob is typing...");
+    feed("{\"op\":0,\"s\":3,\"t\":\"TYPING_START\",\"d\":{\"channel_id\":\"100\",\"user_id\":\"9\",\"user\":{\"id\":\"9\",\"username\":\"carl\"}}}");
+    store_typing_str(s, 100, orbis_mono_s(), out, sizeof out);
+    ASSERT_EQ_STR(out, "bob and carl are typing...");
+    feed("{\"op\":0,\"s\":4,\"t\":\"TYPING_START\",\"d\":{\"channel_id\":\"200\",\"user_id\":\"11\"}}");
+    store_typing_str(s, 200, orbis_mono_s(), out, sizeof out);
+    ASSERT_EQ_STR(out, "Someone is typing...");
+    gw_free(g); store_free(s);
+}
+
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
@@ -147,4 +164,5 @@ void run_gateway_tests(void){
     g_tests_run++; test_events_seq_tracks_dispatch();
     g_tests_run++; test_events_presence_updates_member();
     g_tests_run++; test_events_reactions();
+    g_tests_run++; test_events_typing();
 }

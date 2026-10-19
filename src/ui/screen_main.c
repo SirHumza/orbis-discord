@@ -50,7 +50,7 @@
 #define CHAN_VIS 27
 #define CHAT_Y0 (HEADER_H + 1)
 #define CHAT_H (SCR_H - CHAT_Y0)
-#define COMPOSER_H 56
+#define COMPOSER_H 80
 #define CHAT_VIEW_H (CHAT_H - COMPOSER_H)
 #define MSG_PAD 16
 #define MSG_INDENT 48
@@ -784,17 +784,24 @@ static void draw_main(main_ctx *L, const frame_view *v){
         int cy = SCR_H - COMPOSER_H;
         ui_rect(CHAT_X, cy, CHAT_W, COMPOSER_H, UI_CHAT_BG);
         ui_rect(CHAT_X, cy, CHAT_W, 1, UI_SEP);
-        ui_rrect(CHAT_X + MSG_PAD, cy + 8, CHAT_W - 2 * MSG_PAD,
-                 COMPOSER_H - 16, 8, UI_CHANNEL_BG);
+        if(v->active){
+            char typ[160];
+            store_typing_str(L->app->st, v->active->id, orbis_mono_s(),
+                             typ, sizeof typ);
+            if(typ[0])
+                ui_text(CHAT_X + MSG_PAD + 4, cy + 5, typ, UI_TEXT_DIM, 14);
+        }
+        ui_rrect(CHAT_X + MSG_PAD, cy + 26, CHAT_W - 2 * MSG_PAD,
+                 COMPOSER_H - 34, 8, UI_CHANNEL_BG);
         if(L->focus == 2)
-            ui_rect(CHAT_X + MSG_PAD, cy + 8, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
+            ui_rect(CHAT_X + MSG_PAD, cy + 26, CHAT_W - 2 * MSG_PAD, 2, UI_BLURPLE);
         if(v->active)
             snprintf(buf, sizeof buf, "Message %s%s", v->dm ? "@" : "#",
                      v->active->name);
         else
             snprintf(buf, sizeof buf, "Message");
         trunc_utf8(buf, sizeof buf, buf, 60);
-        ui_text(CHAT_X + MSG_PAD + 12, cy + 22, buf, UI_TEXT_DIM, 16);
+        ui_text(CHAT_X + MSG_PAD + 12, cy + 41, buf, UI_TEXT_DIM, 16);
     }
 
     ui_rect(MEMBER_X, 0, MEMBER_W, SCR_H, UI_CHANNEL_BG);
@@ -1017,7 +1024,12 @@ int screen_main_run(app_state *st){
                 } else if(e == IE_SELECT){
                     if(L.focus == 2 && v.active){
                         char text[1024];
+                        char tpath[96];
                         memset(text, 0, sizeof text);
+                        snprintf(tpath, sizeof tpath,
+                                 "/api/v9/channels/%llu/typing",
+                                 (unsigned long long)v.active->id);
+                        rest_send(st->rest, "POST", tpath, NULL, NULL, NULL);
                         if(ime_prompt("Message", v.active->name, text, sizeof text))
                             send_message(&L, v.active->id, text);
                     }
