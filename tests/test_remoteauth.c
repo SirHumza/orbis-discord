@@ -154,6 +154,26 @@ TEST(test_ra_bad_frames){
     ra_free(r);
 }
 
+TEST(test_ra_qr_modules){
+    static uint8_t mods[128 * 128];
+    static uint8_t mods2[128 * 128];
+    int n = 0, n2 = 0, i;
+    ASSERT_EQ_INT(ra_qr_modules("https://discord.com/ra/AbCdEf123", mods, sizeof mods, &n), 1);
+    ASSERT_TRUE(n >= 21);
+    ASSERT_TRUE(n <= 128);
+    ASSERT_EQ_INT(mods[0], 1);
+    ASSERT_EQ_INT(mods[n - 1], 1);
+    ASSERT_EQ_INT(mods[n * (n - 1)], 1);
+    ASSERT_EQ_INT(mods[1 * n + 1], 0);
+    ASSERT_EQ_INT(mods[2 * n + 2], 1);
+    ASSERT_EQ_INT(mods[7], 0);
+    ASSERT_EQ_INT(ra_qr_modules("https://discord.com/ra/AbCdEf123", mods2, sizeof mods2, &n2), 1);
+    ASSERT_EQ_INT(n, n2);
+    for(i = 0; i < n * n; i++)
+        if(mods[i] != mods2[i]){ ASSERT_TRUE(0); }
+    ASSERT_EQ_INT(ra_qr_modules("https://discord.com/ra/AbCdEf123", mods, 10, &n2), 0);
+}
+
 void run_remoteauth_tests(void){
     g_tests_run++; test_ra_keygen_and_fingerprint();
     g_tests_run++; test_ra_hello_nonce_flow();
@@ -162,4 +182,5 @@ void run_remoteauth_tests(void){
     g_tests_run++; test_ra_decrypt_token();
     g_tests_run++; test_ra_timeout_regen();
     g_tests_run++; test_ra_bad_frames();
+    g_tests_run++; test_ra_qr_modules();
 }

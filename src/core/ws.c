@@ -91,7 +91,8 @@ static void next_mask(unsigned char mk[4]){
     mk[2]=(unsigned char)((mk_seed>>16)&0xff); mk[3]=(unsigned char)((mk_seed>>24)&0xff);
 }
 
-int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key){
+int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
+               const char *origin){
     memset(w,0,sizeof(*w));
     w->rcap = WS_RBUF_MIN;
     w->rbuf = (unsigned char*)malloc(w->rcap);
@@ -211,17 +212,13 @@ int ws_connect(ws_t *w, const char *host, int port, const char *resource, const 
      * module needed). Socket is NBIO; tls_start pumps it with a deadline. */
     w->tls = tls_start(fd, host);
     if(!w->tls){ goto fail; }
-    /* HTTP Upgrade handshake. Desktop-client UA, NO Origin header (native
-     * clients don't send Origin to the gateway). Host has no :port —
+    /* HTTP Upgrade handshake. Desktop-client UA. Origin only when the caller
+     * sets one: the gateway expects native clients to omit it, the
+     * remote-auth gateway expects https://discord.com. Host has no :port —
      * browsers never send the default-port suffix and the front side
      * ignores requests it can't route. */
-    char req[640]; int n=snprintf(req,sizeof req,
-        "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) discord/1.0.9175 Chrome/122.0.6261.112 Electron/30.0.8 "
-        "Safari/537.36\r\n"
-        "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
-        resource?resource:"/", host, key);
+    char req[640]; int n = ws_build_handshake(req, sizeof req, host, resource, key, origin);
+    if(n <= 0){ log_msg("hs build fail"); goto fail; }
     if(ws_send_all(w, (const unsigned char*)req, (size_t)n) < 0){ log_msg("hs write fail"); goto fail; }
     log_msg("hs request sent (%dB)", n);
     /* Read response headers; bytes past "\r\n\r\n" are the first websocket

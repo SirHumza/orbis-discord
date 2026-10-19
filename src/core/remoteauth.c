@@ -1,6 +1,8 @@
 #include "remoteauth.h"
 #include "b64.h"
 #include "jsonlite.h"
+#include "../../third_party/qrcodegen.h"
+#include "../../third_party/qrcodegen.c"
 #include <mbedtls/pk.h>
 #include <mbedtls/rsa.h>
 #include <mbedtls/entropy.h>
@@ -218,4 +220,22 @@ int ra_heartbeat(char *out, size_t cap){
     if(!out) return 0;
     n = snprintf(out, cap, "{\"op\":\"heartbeat\"}");
     return n > 0 && (size_t)n < cap ? n : 0;
+}
+
+int ra_qr_modules(const char *payload, uint8_t *out, size_t cap, int *size_out){
+    static uint8_t temp[qrcodegen_BUFFER_LEN_MAX];
+    static uint8_t qr[qrcodegen_BUFFER_LEN_MAX];
+    int size, x, y;
+    if(!payload || !out || !size_out) return 0;
+    if(!qrcodegen_encodeText(payload, temp, qr, qrcodegen_Ecc_MEDIUM,
+                             qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
+                             qrcodegen_Mask_AUTO, true))
+        return 0;
+    size = qrcodegen_getSize(qr);
+    if(cap < (size_t)size * (size_t)size) return 0;
+    for(y = 0; y < size; y++)
+        for(x = 0; x < size; x++)
+            out[y * size + x] = qrcodegen_getModule(qr, x, y) ? 1 : 0;
+    *size_out = size;
+    return 1;
 }

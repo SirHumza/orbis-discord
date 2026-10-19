@@ -68,6 +68,24 @@ TEST(test_ws_env_field_split_across_chunks){
     ASSERT_EQ_STR(out, "{\"op\":1,\"t\":\"MESSAGE_CREATE\"}");
 }
 
+TEST(test_ws_handshake_origin_included){
+    char req[768];
+    int n = ws_build_handshake(req, sizeof req, "remote-auth-gateway.discord.gg", "/?v=2",
+                               "dGhlIHNhbXBsZSBub25jZQ==", "https://discord.com");
+    ASSERT_TRUE(n > 0);
+    ASSERT_TRUE(strstr(req, "Origin: https://discord.com\r\n") != NULL);
+    ASSERT_TRUE(strstr(req, "Host: remote-auth-gateway.discord.gg\r\n") != NULL);
+    ASSERT_TRUE(strstr(req, "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n") != NULL);
+    ASSERT_EQ_MEM(req + n - 4, "\r\n\r\n", 4);
+}
+
+TEST(test_ws_handshake_no_origin_by_default){
+    char req[768];
+    int n = ws_build_handshake(req, sizeof req, "gateway.discord.gg", "/?v=10&encoding=json", "x", NULL);
+    ASSERT_TRUE(n > 0);
+    ASSERT_TRUE(strstr(req, "Origin:") == NULL);
+}
+
 void run_ws_streaming_tests(void){
     g_tests_run++;
     test_ws_skip_drains_exactly_one_megabyte_in_chunks();
@@ -79,4 +97,8 @@ void run_ws_streaming_tests(void){
     test_ws_env_streams_oversized_ready_in_small_chunks();
     g_tests_run++;
     test_ws_env_field_split_across_chunks();
+    g_tests_run++;
+    test_ws_handshake_origin_included();
+    g_tests_run++;
+    test_ws_handshake_no_origin_by_default();
 }

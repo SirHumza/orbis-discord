@@ -31,6 +31,7 @@ int ra_feed(ra *, const char *json, size_t len, ra_event *out);
 int ra_respond_nonce(ra *, char *json_out, size_t cap);
 int ra_on_close(ra *, int code, ra_event *out);
 int ra_decrypt_token(ra *, const char *enc_b64, char *out, size_t cap);
+int ra_qr_modules(const char *payload, uint8_t *out, size_t cap, int *size_out);
 int ra_hello_interval(ra *);
 int ra_heartbeat(char *out, size_t cap);
 #endif

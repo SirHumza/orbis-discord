@@ -44,7 +44,10 @@ typedef struct {
     int grow_warned;            /* rbuf realloc already logged a failure */
 } ws_t;
 
-int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key);
+int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
+               const char *origin);
+int ws_build_handshake(char *out, size_t cap, const char *host, const char *resource,
+                       const char *key, const char *origin);
 int ws_send_text(ws_t *w, const char *msg, size_t len);
 /* Returns frame payload length (>0), 0 if no complete frame yet, <0 on error,
  * or -3 if an oversized frame was drained and skipped (payload lost). */

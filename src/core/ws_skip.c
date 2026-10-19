@@ -15,6 +15,28 @@
  * the same code, so the tests cannot drift from the payload.
  */
 #include "ws.h"
+#include <stdio.h>
+
+int ws_build_handshake(char *out, size_t cap, const char *host, const char *resource,
+                       const char *key, const char *origin){
+    char origin_line[128];
+    int n;
+    if(!out || cap == 0) return 0;
+    if(origin && *origin)
+        snprintf(origin_line, sizeof origin_line, "Origin: %s\r\n", origin);
+    else
+        origin_line[0] = 0;
+    n = snprintf(out, cap,
+        "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        "%s"
+        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) discord/1.0.9175 Chrome/122.0.6261.112 Electron/30.0.8 "
+        "Safari/537.36\r\n"
+        "Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
+        resource?resource:"/", host, origin_line, key);
+    if(n <= 0 || (size_t)n >= cap) return 0;
+    return n;
+}
 
 uint64_t ws_skip_plan(uint64_t plen, size_t payload_here, uint64_t *skip_left_out){
     if(!skip_left_out) return 0;
