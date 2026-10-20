@@ -44,7 +44,7 @@ hardware yet.
 | Group DMs: multi-select create, rename, TRIANGLE member list with add/remove | Done | host tests, PS4 elf |
 | Presence: L3 status picker (online/idle/dnd/invisible) via gateway op 3 | Done | host tests, PS4 elf |
 | Member profiles: CROSS menu card with avatar, tag, joined date, bot badge | Done | PS4 elf |
-| Custom emoji picker: guild emoji row in the reaction picker, sends name:id | Done | host tests, PS4 elf |
+| Custom emoji picker: guild emoji rows in the reaction picker, L1/R1 paging, sends name:id | Done | PS4 elf |
 | GIF picker: Tenor search/trending grid (touchpad), CROSS sends the GIF link | Done | host tests, PS4 elf |
 | Guild rail badges: unread dot, mention-count pill per guild | Done | host tests, PS4 elf |
 | Notification sounds: distinct message/mention tones via SDL audio | Done | host tests, PS4 elf |
@@ -123,7 +123,7 @@ Phase 2, messaging parity:
 - [x] Reaction rendering: chip row, counts, me highlight, live gateway updates
 - [x] Stickers: PNG/APNG rendered, GIF first frame, Lottie name fallback
 - [x] Reaction interaction: quick-reaction picker with REST PUT/DELETE
-- [x] Custom emoji picker (guild emoji row in the reaction picker)
+- [x] Custom emoji picker (guild emoji rows with L1/R1 paging)
 - [x] GIF picker (Tenor search/trending grid, CROSS sends the GIF link)
 - [x] Reply previews: referenced-message preview rows, preserved across edits
 - [x] Reply send (REST), own-message edit/delete via SQUARE-selected action menu

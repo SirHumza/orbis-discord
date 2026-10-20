@@ -143,6 +143,7 @@ typedef struct {
     int menu_items[6];
     int react_pick;
     int react_i;
+    int react_page;
     int emoji_pending;
     int emoji_loaded;
     int emoji_gen;
@@ -1739,10 +1740,28 @@ static void emoji_fetch(main_ctx *L, uint64_t guild){
     }
 }
 
+static int react_page_count(const main_ctx *L){
+    int pages = (L->react_custom_n + EMOJI_PICK - 1) / EMOJI_PICK;
+    return pages < 1 ? 1 : pages;
+}
+
+static int react_custom_window(main_ctx *L, int *first){
+    int pages = react_page_count(L);
+    if(L->react_page >= pages) L->react_page = pages - 1;
+    *first = L->react_page * EMOJI_PICK;
+    {
+        int nc = L->react_custom_n - *first;
+        if(nc < 0) nc = 0;
+        if(nc > EMOJI_PICK) nc = EMOJI_PICK;
+        return nc;
+    }
+}
+
 static void picker_open(main_ctx *L){
     const channel *ch = store_channel(L->app->st, L->chan_loaded);
     L->react_pick = 1;
     L->react_i = 0;
+    L->react_page = 0;
     if(ch && ch->guild &&
        (ch->guild != L->emoji_guild || !L->emoji_loaded))
         emoji_fetch(L, ch->guild);
@@ -2704,20 +2723,26 @@ static void draw_pins(main_ctx *L){
 
 static void draw_react_pick(main_ctx *L){
     int nu = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
-    int nc = L->react_custom_n > EMOJI_PICK ? EMOJI_PICK : L->react_custom_n;
+    int first, nc = react_custom_window(L, &first);
     int n = nu + nc;
     int cell = 52, w = 32 + n * cell, h = 110;
     int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
     ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
     ui_text(x + 16, y + 10, "Add reaction", UI_TEXT, 14);
+    if(react_page_count(L) > 1){
+        char pg[32];
+        snprintf(pg, sizeof pg, "Page %d/%d", L->react_page + 1,
+                 react_page_count(L));
+        ui_text(x + w - 96, y + 10, pg, UI_TEXT_DIM, 12);
+    }
     for(i = 0; i < nu; i++){
         int cx = x + 16 + i * cell;
         if(i == L->react_i) ui_rrect(cx, y + 30, 44, 44, 8, UI_BLURPLE);
         ui_text(cx + 8, y + 38, QUICK_EMOJI[i], UI_TEXT, 28);
     }
     for(i = 0; i < nc; i++){
-        const emoji_entry *e = &L->react_custom[i];
+        const emoji_entry *e = &L->react_custom[first + i];
         int cx = x + 16 + (nu + i) * cell;
         if(nu + i == L->react_i)
             ui_rrect(cx, y + 30, 44, 44, 8, UI_BLURPLE);
@@ -2729,7 +2754,11 @@ static void draw_react_pick(main_ctx *L){
     }
     if(L->emoji_pending && nc == 0)
         ui_text(x + w - 120, y + 88, "Loading emoji...", UI_TEXT_DIM, 12);
-    ui_text(x + 16, y + 84, "CROSS toggle   CIRCLE close", UI_TEXT_DIM, 12);
+    ui_text(x + 16, y + 84,
+            react_page_count(L) > 1
+                ? "CROSS toggle   L1/R1 page   CIRCLE close"
+                : "CROSS toggle   CIRCLE close",
+            UI_TEXT_DIM, 12);
 }
 
 static void draw_gifs(main_ctx *L){
@@ -3270,14 +3299,20 @@ int screen_main_run(app_state *st){
                 }
                 if(L.react_pick){
                     int nu = (int)(sizeof QUICK_EMOJI / sizeof QUICK_EMOJI[0]);
-                    int nc = L.react_custom_n > EMOJI_PICK ? EMOJI_PICK
-                                                           : L.react_custom_n;
+                    int first, nc = react_custom_window(&L, &first);
                     int n = nu + nc;
                     if(L.react_i >= n) L.react_i = 0;
                     if(e == IE_LEFT || e == IE_UP){
                         L.react_i = (L.react_i + n - 1) % n;
                     } else if(e == IE_RIGHT || e == IE_DOWN){
                         L.react_i = (L.react_i + 1) % n;
+                    } else if(e == IE_PGUP && L.react_page > 0){
+                        L.react_page--;
+                        L.react_i = 0;
+                    } else if(e == IE_PGDN &&
+                              L.react_page + 1 < react_page_count(&L)){
+                        L.react_page++;
+                        L.react_i = 0;
                     } else if(e == IE_SELECT){
                         const message *m = store_message(
                             L.app->st, L.chan_loaded, L.sel_id);
@@ -3285,7 +3320,7 @@ int screen_main_run(app_state *st){
                             react_toggle(&L, m, QUICK_EMOJI[L.react_i]);
                         } else if(m){
                             const emoji_entry *ce =
-                                &L.react_custom[L.react_i - nu];
+                                &L.react_custom[first + (L.react_i - nu)];
                             char tag[96];
                             snprintf(tag, sizeof tag, "%s:%llu", ce->name,
                                      (unsigned long long)ce->id);
