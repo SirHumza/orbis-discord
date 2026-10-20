@@ -4,14 +4,14 @@ A native Discord client for the PlayStation 4. C99, SDL2, OpenOrbis toolchain,
 statically vendored mbedTLS. No browser, no WebView: the UI is drawn from
 scratch to match the Discord desktop layout pixel for pixel.
 
-Status: **WIP (work in progress).** This is a hobby project, not a finished
-client. It boots, logs in with the Discord mobile app (QR remote auth) or a
-pasted user token, connects to the gateway, and implements text messaging,
-DMs, friends, reactions, threads, forums, invites, and settings. Voice
-joining completes the WS/UDP handshake, but Discord now requires DAVE E2EE
-for audio, so voice receive, mic capture, and screenshare are blocked
-pending a libdave/MLS port. Nothing has been smoke-tested on retail
-hardware yet.
+Status: **WIP (work in progress), 88% of the tracked roadmap (37/42 items).**
+This is a hobby project, not a finished client. It boots, logs in with the
+Discord mobile app (QR remote auth) or a pasted user token, connects to the
+gateway, and implements text messaging, DMs, friends, reactions, threads,
+forums, invites, and settings. Voice joining completes the WS/UDP handshake,
+but Discord now requires DAVE E2EE for audio, so voice receive, mic capture,
+and screenshare are blocked pending a libdave/MLS port. Nothing has been
+smoke-tested on retail hardware yet.
 
 ## What works today
 
@@ -46,7 +46,7 @@ hardware yet.
 | Member profiles: CROSS menu card with avatar, tag, joined date, bot badge | Done | PS4 elf |
 | Custom emoji picker: guild emoji rows in the reaction picker, L1/R1 paging, sends name:id | Done | PS4 elf |
 | GIF picker: Tenor search/trending grid (touchpad), 32 results with L1/R1 paging | Done | host tests, PS4 elf |
-| Guild rail badges: unread dot, mention-count pill per guild | Done | host tests, PS4 elf |
+| Guild rail badges: unread dot, mention-count pill per guild, hidden channels excluded | Done | host tests, PS4 elf |
 | Notification sounds: distinct message/mention tones via SDL audio | Done | host tests, PS4 elf |
 | Role hoisting: member list grouped by hoisted role, colored headers | Done | host tests, PS4 elf |
 | Channel categories: header rows group channels, CROSS collapses a category | Done | PS4 elf |
@@ -73,7 +73,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (183 checks) + fixtures
+tests/        host test suite (184 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -133,7 +133,7 @@ Phase 2, messaging parity:
 - [x] Typing indicators: TYPING_START receive, composer strip, /typing POST on composer open
 - [x] Mentions: @user/#channel/:emoji: token resolution, mentions-me row highlight
 - [x] Unread dots on channel and DM rows (read state is session-scoped)
-- [x] Guild-rail unread dots and mention-count badges
+- [x] Guild-rail unread dots and mention-count badges (permission-aware)
 - [x] Notification sounds (message/mention tones, gateway-driven)
 - [x] Avatars/guild icons from the CDN, role colors on author/member names
 - [x] Member profiles (avatar, tag, joined date, bot badge)

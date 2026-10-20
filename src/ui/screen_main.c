@@ -2087,8 +2087,8 @@ static void badges_refresh(main_ctx *L){
     L->badge_n = (int)n;
     for(i = 0; i < n; i++){
         L->badges[i].guild = gs[i]->id;
-        store_guild_unread(st, gs[i]->id, &L->badges[i].unread,
-                           &L->badges[i].mentions);
+        store_guild_unread(st, gs[i]->id, gw_self_id(L->app->gw),
+                           &L->badges[i].unread, &L->badges[i].mentions);
     }
 }
 

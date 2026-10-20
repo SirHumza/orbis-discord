@@ -1,4 +1,5 @@
 #include "store.h"
+#include "perm.h"
 #include "snowflake.h"
 #include <stdlib.h>
 #include <string.h>
@@ -520,16 +521,21 @@ void store_set_member_top_role(store *st, uint64_t guild_id, uint64_t user_id,
         }
 }
 
-void store_guild_unread(store *st, uint64_t guild_id, int *unread, int *mentions){
+void store_guild_unread(store *st, uint64_t guild_id, uint64_t self_id,
+                        int *unread, int *mentions){
+    const guild *gu;
     size_t i;
     if(unread) *unread = 0;
     if(mentions) *mentions = 0;
     if(!st) return;
+    gu = store_guild(st, guild_id);
     for(i = 0; i < st->nchannels; i++){
         const channel *ch = &st->channels[i];
         chan_msgs *c;
         const message *m;
         if(ch->guild != guild_id || ch->type != 0) continue;
+        if(!perm_can(perm_effective(ch, gu, self_id), PERM_VIEW_CHANNEL))
+            continue;
         c = msgs_for(st, ch->id, 0);
         if(!c) continue;
         for(m = c->head; m; m = m->next){

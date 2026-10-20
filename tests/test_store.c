@@ -1,6 +1,7 @@
 #include "tests.h"
 #include "../src/model/snowflake.h"
 #include "../src/model/store.h"
+#include "../src/model/perm.h"
 
 TEST(test_snowflake_parse_format){
     const char *s = "175928847299117063";
@@ -281,6 +282,8 @@ TEST(test_store_guild_unread_counts){
     channel c2 = {.id = 101, .guild = 5, .type = 0};
     channel dm = {.id = 102, .guild = 0, .type = 1};
     channel other = {.id = 103, .guild = 6, .type = 0};
+    guild g5 = {.id = 5, .my_perms = PERM_VIEW_CHANNEL};
+    guild g6 = {.id = 6, .my_perms = PERM_VIEW_CHANNEL};
     message a = {.id = 10, .chan = 100};
     message b = {.id = 20, .chan = 100};
     message c = {.id = 30, .chan = 100, .mentions_me = 1};
@@ -289,6 +292,8 @@ TEST(test_store_guild_unread_counts){
     message f = {.id = 60, .chan = 103};
     int unread = -1, mentions = -1;
     ASSERT_TRUE(st != NULL);
+    store_put_guild(st, &g5);
+    store_put_guild(st, &g6);
     store_put_channel(st, &c1);
     store_put_channel(st, &c2);
     store_put_channel(st, &dm);
@@ -300,19 +305,48 @@ TEST(test_store_guild_unread_counts){
     store_put_message(st, &d);
     store_put_message(st, &e);
     store_put_message(st, &f);
-    store_guild_unread(st, 5, &unread, &mentions);
+    store_guild_unread(st, 5, 77, &unread, &mentions);
     ASSERT_EQ_INT(unread, 3);
     ASSERT_EQ_INT(mentions, 1);
-    store_guild_unread(st, 6, &unread, &mentions);
+    store_guild_unread(st, 6, 77, &unread, &mentions);
     ASSERT_EQ_INT(unread, 1);
     ASSERT_EQ_INT(mentions, 0);
-    store_guild_unread(st, 99, &unread, &mentions);
+    store_guild_unread(st, 99, 77, &unread, &mentions);
     ASSERT_EQ_INT(unread, 0);
     ASSERT_EQ_INT(mentions, 0);
     store_mark_read(st, 100);
-    store_guild_unread(st, 5, &unread, &mentions);
+    store_guild_unread(st, 5, 77, &unread, &mentions);
     ASSERT_EQ_INT(unread, 1);
     ASSERT_EQ_INT(mentions, 0);
+    store_free(st);
+}
+
+TEST(test_store_guild_unread_ignores_hidden_channels){
+    store *st = store_new();
+    guild gu = {.id = 5, .my_perms = PERM_VIEW_CHANNEL};
+    channel open = {.id = 100, .guild = 5, .type = 0};
+    channel secret = {.id = 101, .guild = 5, .type = 0, .now = 2};
+    message a = {.id = 10, .chan = 100, .mentions_me = 1};
+    message b = {.id = 20, .chan = 101, .mentions_me = 1};
+    int unread = -1, mentions = -1;
+    secret.ow[0].id = 5;
+    secret.ow[0].type = 0;
+    secret.ow[0].deny = PERM_VIEW_CHANNEL;
+    secret.ow[1].id = 77;
+    secret.ow[1].type = 1;
+    secret.ow[1].allow = PERM_VIEW_CHANNEL;
+    ASSERT_TRUE(st != NULL);
+    store_put_guild(st, &gu);
+    store_put_channel(st, &open);
+    store_put_channel(st, &secret);
+    store_put_message(st, &a);
+    store_put_message(st, &b);
+    store_guild_unread(st, 5, 77, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 2);
+    ASSERT_EQ_INT(mentions, 2);
+    store_guild_unread(st, 5, 88, &unread, &mentions);
+    ASSERT_EQ_INT(unread, 1);
+    ASSERT_EQ_INT(mentions, 1);
     store_free(st);
 }
 
@@ -357,5 +391,6 @@ void run_store_tests(void){
     g_tests_run++; test_store_unread();
     g_tests_run++; test_store_message_lookup();
     g_tests_run++; test_store_guild_unread_counts();
+    g_tests_run++; test_store_guild_unread_ignores_hidden_channels();
     g_tests_run++; test_store_hoisted_roles();
 }
