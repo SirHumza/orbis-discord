@@ -79,6 +79,8 @@ typedef struct {
 #define FRIEND_MAX 64
 #define EMOJI_MAX 64
 #define EMOJI_PICK 8
+#define GIF_MAX 32
+#define GIF_PICK 16
 
 typedef struct {
     uint64_t id;
@@ -153,9 +155,10 @@ typedef struct {
     int gifs;
     int gif_n;
     int gif_i;
+    int gif_page;
     uint64_t gif_chan;
     char gif_q[96];
-    gif_item gif_list[16];
+    gif_item gif_list[GIF_MAX];
     int gview;
     int gview_pending;
     int gview_n;
@@ -1775,17 +1778,17 @@ static void gif_prompt(main_ctx *L){
     if(rest_path_encode(q, enc, sizeof enc) < 0) return;
     if(q[0])
         snprintf(path, sizeof path,
-                 "/v2/search?key=%s&limit=16&media_filter=tinygif,gif&q=%s",
-                 TENOR_KEY, enc);
+                  "/v2/search?key=%s&limit=%d&media_filter=tinygif,gif&q=%s",
+                  TENOR_KEY, GIF_MAX, enc);
     else
         snprintf(path, sizeof path,
-                 "/v2/featured?key=%s&limit=16&media_filter=tinygif,gif",
-                 TENOR_KEY);
+                  "/v2/featured?key=%s&limit=%d&media_filter=tinygif,gif",
+                  TENOR_KEY, GIF_MAX);
     if(tenor_net_get(path, &body, &len) != 0){
         set_status(L, "GIF search failed");
         return;
     }
-    L->gif_n = gif_from_tenor(body, L->gif_list, 16);
+    L->gif_n = gif_from_tenor(body, L->gif_list, GIF_MAX);
     free(body);
     if(L->gif_n <= 0){
         set_status(L, "No GIFs found");
@@ -1794,6 +1797,7 @@ static void gif_prompt(main_ctx *L){
     snprintf(L->gif_q, sizeof L->gif_q, "%s", q);
     L->gif_chan = L->chan_loaded;
     L->gif_i = 0;
+    L->gif_page = 0;
     L->gifs = 1;
 }
 
@@ -2764,11 +2768,23 @@ static void draw_react_pick(main_ctx *L){
 static void draw_gifs(main_ctx *L){
     enum { COLS = 4 };
     int cw = 210, ch = 150, pad = 12;
-    int rows = (L->gif_n + COLS - 1) / COLS;
-    int w = COLS * cw + pad * 2;
-    int h = 60 + rows * ch + 36;
-    int x = (SCR_W - w) / 2, y = (SCR_H - h) / 2, i;
+    int pages = (L->gif_n + GIF_PICK - 1) / GIF_PICK;
+    int first = L->gif_page * GIF_PICK;
+    int count = L->gif_n - first;
+    int rows, w, h, x, y, i;
     char title[128], t2[64];
+    if(pages < 1) pages = 1;
+    if(L->gif_page >= pages) L->gif_page = pages - 1;
+    first = L->gif_page * GIF_PICK;
+    count = L->gif_n - first;
+    if(count < 0) count = 0;
+    if(count > GIF_PICK) count = GIF_PICK;
+    rows = (count + COLS - 1) / COLS;
+    if(rows < 1) rows = 1;
+    w = COLS * cw + pad * 2;
+    h = 60 + rows * ch + 36;
+    x = (SCR_W - w) / 2;
+    y = (SCR_H - h) / 2;
     ui_rect(0, 0, SCR_W, SCR_H, 0x80000000u);
     ui_rrect(x, y, w, h, 10, UI_CHANNEL_BG);
     if(L->gif_q[0])
@@ -2777,12 +2793,17 @@ static void draw_gifs(main_ctx *L){
         snprintf(title, sizeof title, "Trending GIFs");
     trunc_utf8(t2, sizeof t2, title, 46);
     ui_text(x + pad + 8, y + 16, t2, UI_TEXT, 18);
-    for(i = 0; i < L->gif_n; i++){
-        const gif_item *g = &L->gif_list[i];
+    if(pages > 1){
+        char pg[32];
+        snprintf(pg, sizeof pg, "Page %d/%d", L->gif_page + 1, pages);
+        ui_text(x + w - 112, y + 16, pg, UI_TEXT_DIM, 14);
+    }
+    for(i = 0; i < count; i++){
+        const gif_item *g = &L->gif_list[first + i];
         int cx = x + pad + (i % COLS) * cw;
         int cy = y + 48 + (i / COLS) * ch;
         int tw = cw - 16, th = ch - 16;
-        if(i == L->gif_i)
+        if(first + i == L->gif_i)
             ui_rrect(cx - 2, cy - 2, cw - 4, ch - 4, 8, UI_BLURPLE);
         if(g->w > 0 && g->h > 0){
             th = tw * g->h / g->w;
@@ -2796,7 +2817,10 @@ static void draw_gifs(main_ctx *L){
             ui_text(cx + 8, cy + 8, "GIF", UI_TEXT_DIM, 14);
     }
     ui_text(x + pad + 8, y + h - 26,
-            "CROSS send   R2 new search   CIRCLE close", UI_TEXT_DIM, 12);
+            pages > 1
+                ? "CROSS send   L1/R1 page   R2 new search   CIRCLE close"
+                : "CROSS send   R2 new search   CIRCLE close",
+            UI_TEXT_DIM, 12);
 }
 
 static void draw_menu(main_ctx *L){
@@ -3522,14 +3546,31 @@ int screen_main_run(app_state *st){
                     continue;
                 }
                 if(L.gifs){
-                    if(e == IE_UP && L.gif_i >= 4){
+                    int pages = (L.gif_n + GIF_PICK - 1) / GIF_PICK;
+                    int first, count;
+                    if(pages < 1) pages = 1;
+                    if(L.gif_page >= pages) L.gif_page = pages - 1;
+                    if(L.gif_page < 0) L.gif_page = 0;
+                    first = L.gif_page * GIF_PICK;
+                    count = L.gif_n - first;
+                    if(count < 0) count = 0;
+                    if(count > GIF_PICK) count = GIF_PICK;
+                    if(L.gif_i < first || L.gif_i >= first + count)
+                        L.gif_i = first;
+                    if(e == IE_UP && L.gif_i >= first + 4){
                         L.gif_i -= 4;
-                    } else if(e == IE_DOWN && L.gif_i + 4 < L.gif_n){
+                    } else if(e == IE_DOWN && L.gif_i + 4 < first + count){
                         L.gif_i += 4;
-                    } else if(e == IE_LEFT && L.gif_i > 0){
+                    } else if(e == IE_LEFT && L.gif_i > first){
                         L.gif_i--;
-                    } else if(e == IE_RIGHT && L.gif_i + 1 < L.gif_n){
+                    } else if(e == IE_RIGHT && L.gif_i + 1 < first + count){
                         L.gif_i++;
+                    } else if(e == IE_PGUP && L.gif_page > 0){
+                        L.gif_page--;
+                        L.gif_i = L.gif_page * GIF_PICK;
+                    } else if(e == IE_PGDN && L.gif_page + 1 < pages){
+                        L.gif_page++;
+                        L.gif_i = L.gif_page * GIF_PICK;
                     } else if(e == IE_SELECT){
                         if(can_send_chan(&L,
                                          store_channel(L.app->st, L.gif_chan))){
