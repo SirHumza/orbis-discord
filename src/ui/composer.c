@@ -87,6 +87,42 @@ int composer_group_dm(const uint64_t *ids, int n, char *out, size_t cap){
     return (int)o;
 }
 
+int composer_forum_post(const char *name, const char *content, char *out,
+                        size_t cap){
+    size_t n = 0;
+    if(!out || cap < 80) return -1;
+    if(!name) name = "";
+    if(!content) content = "";
+    out[0] = 0;
+    #define PUT(c) do { if(n + 1 >= cap) return -1; out[n++] = (char)(c); out[n] = 0; } while(0)
+    #define PUTS(lit) do { const char *p_ = (lit); while(*p_) PUT(*p_++); } while(0)
+    #define ESC(v) do { \
+        const unsigned char *q_ = (const unsigned char *)(v); \
+        while(*q_){ \
+            unsigned char c = *q_++; \
+            if(c == '"' || c == '\\'){ PUT('\\'); PUT(c); } \
+            else if(c == '\n'){ PUT('\\'); PUT('n'); } \
+            else if(c == '\r'){ PUT('\\'); PUT('r'); } \
+            else if(c == '\t'){ PUT('\\'); PUT('t'); } \
+            else if(c < 0x20){ \
+                char esc[8]; \
+                snprintf(esc, sizeof esc, "\\u%04x", c); \
+                PUT(esc[0]); PUT(esc[1]); PUT(esc[2]); PUT(esc[3]); \
+                PUT(esc[4]); PUT(esc[5]); \
+            } else PUT((char)c); \
+        } \
+    } while(0)
+    PUTS("{\"name\":\"");
+    ESC(name);
+    PUTS("\",\"auto_archive_duration\":1440,\"message\":{\"content\":\"");
+    ESC(content);
+    PUTS("\"}}");
+    #undef ESC
+    #undef PUTS
+    #undef PUT
+    return (int)n;
+}
+
 int composer_name_payload(const char *name, char *out, size_t cap){
     size_t n = 0;
     const unsigned char *s = (const unsigned char *)(name ? name : "");

@@ -16,5 +16,8 @@ int composer_payload_edit(const char *content, char *out, size_t cap);
 int composer_group_dm(const uint64_t *ids, int n, char *out, size_t cap);
 /* {"name":"..."} with JSON escapes, for PATCH /channels/{id}. */
 int composer_name_payload(const char *name, char *out, size_t cap);
+/* Forum post: {"name","auto_archive_duration":1440,"message":{"content"}}. */
+int composer_forum_post(const char *name, const char *content, char *out,
+                        size_t cap);
 
 #endif

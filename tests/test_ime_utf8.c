@@ -116,6 +116,17 @@ TEST(test_composer_group_dm){
     ASSERT_EQ_INT(composer_group_dm(ids, 2, out, 27), -1);
 }
 
+TEST(test_composer_forum_post){
+    char out[512];
+    int n = composer_forum_post("My \"post\"", "line one\nline two",
+                                out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"name\":\"My \\\"post\\\"\","
+                       "\"auto_archive_duration\":1440,"
+                       "\"message\":{\"content\":\"line one\\nline two\"}}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    ASSERT_EQ_INT(composer_forum_post("x", "y", out, 20), -1);
+}
+
 TEST(test_composer_name_payload){
     char out[128];
     int n = composer_name_payload("My \"crew\"", out, sizeof out);
@@ -145,5 +156,6 @@ void run_ime_utf8_tests(void){
     g_tests_run++; test_composer_payload_reply();
     g_tests_run++; test_composer_payload_edit();
     g_tests_run++; test_composer_group_dm();
+    g_tests_run++; test_composer_forum_post();
     g_tests_run++; test_composer_name_payload();
 }

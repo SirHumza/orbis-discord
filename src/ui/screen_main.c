@@ -1899,6 +1899,44 @@ static int can_send_chan(main_ctx *L, const channel *ch){
     return perm_can(chan_perms(L, ch), PERM_SEND_MESSAGES);
 }
 
+static void forum_post_cb(int status, const char *body, void *ud){
+    main_ctx *L = ud;
+    (void)body;
+    if(status != 200 && status != 201){
+        set_status(L, "Post failed");
+        return;
+    }
+    set_status(L, "Post created");
+    if(L->tview) tview_open(L, L->tview_chan, L->tview_guild);
+}
+
+static void forum_create(main_ctx *L, uint64_t chan){
+    const channel *ch = store_channel(L->app->st, chan);
+    char title[128], body[1024], payload[2048], path[96];
+    if(!ch || ch->type != 15) return;
+    if(!can_send_chan(L, ch)){
+        set_status(L, "No permission to post");
+        return;
+    }
+    memset(title, 0, sizeof title);
+    memset(body, 0, sizeof body);
+    if(!ime_prompt("Post title", "", title, sizeof title)) return;
+    if(!title[0]) return;
+    if(!ime_prompt("Post message", "", body, sizeof body)) return;
+    if(!body[0]) return;
+    if(composer_forum_post(title, body, payload, sizeof payload) < 0){
+        set_status(L, "Post failed");
+        return;
+    }
+    snprintf(path, sizeof path, "/api/v9/channels/%llu/threads",
+             (unsigned long long)chan);
+    if(rest_send(L->app->rest, "POST", path, payload, forum_post_cb, L) != 0){
+        set_status(L, "Post failed");
+        return;
+    }
+    set_status(L, "Creating post...");
+}
+
 static int cat_collapsed(const main_ctx *L, uint64_t id){
     int i;
     for(i = 0; i < L->cat_n; i++)
@@ -2587,7 +2625,9 @@ static void draw_tview(main_ctx *L){
             ui_text(x + 24, ry + 18, sub, UI_TEXT_DIM, 12);
         }
     }
-    ui_text(x + 20, y + h - 30, "CROSS open   CIRCLE close",
+    ui_text(x + 20, y + h - 30,
+            L->tview_forum ? "CROSS open   SQUARE new post   CIRCLE close"
+                           : "CROSS open   CIRCLE close",
             UI_TEXT_DIM, 12);
 }
 
@@ -3409,6 +3449,8 @@ int screen_main_run(app_state *st){
                         L.tview_i++;
                     } else if(e == IE_SELECT && L.tview_n > 0){
                         tview_join(&L);
+                    } else if(e == IE_MENU && L.tview_forum){
+                        forum_create(&L, L.tview_chan);
                     } else if(e == IE_BACK || e == IE_VIEW){
                         L.tview = 0;
                     }
@@ -3577,6 +3619,8 @@ int screen_main_run(app_state *st){
                         group_rename(&L, v.active);
                     else if(L.focus == 1 && v.active && v.active->type == 0)
                         iview_open(&L, v.active->id);
+                    else if(L.focus == 1 && v.active && v.active->type == 15)
+                        forum_create(&L, v.active->id);
                 } else if(e == IE_PINS){
                     if(L.focus == 2 && v.active)
                         pins_open(&L, v.active->id);

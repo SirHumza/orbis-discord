@@ -53,7 +53,7 @@ hardware yet.
 | Channel permissions: role/overwrite VIEW filtering, SEND_MESSAGES gating | Done | host tests, PS4 elf |
 | Channel invites: SQUARE on a text channel lists, creates, and revokes invites | Done | host tests, PS4 elf |
 | Threads: TRIANGLE lists active threads, CROSS opens one in the channel list | Done | host tests, PS4 elf |
-| Forums: forum channels open a posts overlay, CROSS opens a post as a thread | Done | host tests, PS4 elf |
+| Forums: posts overlay, CROSS opens a post, SQUARE creates a post (title + body) | Done | host tests, PS4 elf |
 | Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
 | Voice join: CROSS on a voice channel runs the voice WS/UDP handshake | Partial (no audio yet) | host tests, PS4 elf |
 | Attachments: SQUARE in the viewer saves to downloads, L1 uploads a saved file | Done | host tests, PS4 elf |
@@ -73,7 +73,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (177 checks) + fixtures
+tests/        host test suite (178 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -144,7 +144,7 @@ Phase 2, messaging parity:
 - [x] Channel permissions (VIEW_CHANNEL filtering, SEND_MESSAGES gating)
 - [x] Channel invites (list/create/revoke)
 - [x] Active threads (list, open)
-- [x] Forums (browse and open active posts; creating posts is not wired)
+- [x] Forums (browse active posts, create a post with title and body)
 - [x] Settings screen (account/gateway info, sound toggle, logout)
 - [ ] Slash commands (application commands cannot be invoked with a user token)
 - [x] Voice join: gateway op 4, voice WS identify, UDP IP discovery, select_protocol
