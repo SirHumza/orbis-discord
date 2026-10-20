@@ -1239,8 +1239,8 @@ static void upick_open(main_ctx *L, uint64_t chan){
     if(L->upick_n == 0) set_status(L, "No files in downloads");
 }
 
-static void upick_upload(main_ctx *L){
-    char path[256], ctype[96], rpath[96];
+static void upick_upload(main_ctx *L, const char *caption){
+    char path[256], ctype[96], rpath[96], payload[2048];
     char *data = NULL, *body = NULL;
     size_t len = 0, blen = 0;
     FILE *f;
@@ -1275,7 +1275,9 @@ static void upick_upload(main_ctx *L){
         return;
     }
     fclose(f);
-    if(multipart_build(UPLOAD_BOUNDARY, NULL,
+    if(composer_upload_payload(caption, L->upick_names[L->upick_i], payload,
+                               sizeof payload) < 0 ||
+       multipart_build(UPLOAD_BOUNDARY, payload,
                        L->upick_names[L->upick_i],
                        upload_ctype(L->upick_names[L->upick_i]), data, len,
                        &body, &blen) != 0){
@@ -2443,7 +2445,7 @@ static void draw_upick(main_ctx *L){
             ui_text(x + 24, ry, L->upick_names[i], UI_TEXT, 15);
         }
     }
-    ui_text(x + 20, y + h - 30, "CROSS upload   CIRCLE close",
+    ui_text(x + 20, y + h - 30, "CROSS attach + caption   CIRCLE close",
             UI_TEXT_DIM, 12);
 }
 
@@ -3471,8 +3473,13 @@ int screen_main_run(app_state *st){
                         if(L.upick_i >= L.upick_n) L.upick_i = 0;
                     } else if(e == IE_SELECT){
                         if(L.upick_n > 0){
-                            upick_upload(&L);
-                            L.upick = 0;
+                            char caption[1024];
+                            memset(caption, 0, sizeof caption);
+                            if(ime_prompt("Message (optional)", "", caption,
+                                          sizeof caption)){
+                                upick_upload(&L, caption);
+                                L.upick = 0;
+                            }
                         }
                     } else if(e == IE_BACK || e == IE_MENU){
                         L.upick = 0;

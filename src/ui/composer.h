@@ -19,5 +19,8 @@ int composer_name_payload(const char *name, char *out, size_t cap);
 /* Forum post: {"name","auto_archive_duration":1440,"message":{"content"}}. */
 int composer_forum_post(const char *name, const char *content, char *out,
                         size_t cap);
+/* Multipart payload_json for one attachment, with optional caption. */
+int composer_upload_payload(const char *content, const char *filename,
+                            char *out, size_t cap);
 
 #endif

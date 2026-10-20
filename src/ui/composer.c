@@ -1,5 +1,6 @@
 #include "composer.h"
 #include <stdio.h>
+#include <string.h>
 
 static int payload_build(const char *content, uint64_t nonce, uint64_t reply_id,
                          uint64_t reply_chan, int edit, char *out, size_t cap){
@@ -85,6 +86,49 @@ int composer_group_dm(const uint64_t *ids, int n, char *out, size_t cap){
     out[o++] = '}';
     out[o] = 0;
     return (int)o;
+}
+
+static int append_escaped(const char *s, size_t *n, char *out, size_t cap){
+    const unsigned char *p = (const unsigned char *)(s ? s : "");
+    while(*p){
+        unsigned char c = *p++;
+        if(c == '"' || c == '\\' || c == '\n' || c == '\r' || c == '\t'){
+            if(*n + 2 >= cap) return -1;
+            out[(*n)++] = '\\';
+            out[(*n)++] = c == '\n' ? 'n' : c == '\r' ? 'r'
+                          : c == '\t' ? 't' : (char)c;
+        } else if(c < 0x20){
+            if(*n + 6 >= cap) return -1;
+            snprintf(out + *n, cap - *n, "\\u%04x", c);
+            *n += 6;
+        } else {
+            if(*n + 1 >= cap) return -1;
+            out[(*n)++] = (char)c;
+        }
+    }
+    out[*n] = 0;
+    return 0;
+}
+
+int composer_upload_payload(const char *content, const char *filename,
+                            char *out, size_t cap){
+    size_t n = 0;
+    if(!out || cap < 80) return -1;
+    out[0] = 0;
+    #define PUTS(lit) do { \
+        size_t l_ = strlen(lit); \
+        if(n + l_ >= cap) return -1; \
+        memcpy(out + n, (lit), l_); \
+        n += l_; \
+        out[n] = 0; \
+    } while(0)
+    PUTS("{\"content\":\"");
+    if(append_escaped(content, &n, out, cap) < 0) return -1;
+    PUTS("\",\"attachments\":[{\"id\":0,\"filename\":\"");
+    if(append_escaped(filename, &n, out, cap) < 0) return -1;
+    PUTS("\"}]}");
+    #undef PUTS
+    return (int)n;
 }
 
 int composer_forum_post(const char *name, const char *content, char *out,

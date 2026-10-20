@@ -127,6 +127,18 @@ TEST(test_composer_forum_post){
     ASSERT_EQ_INT(composer_forum_post("x", "y", out, 20), -1);
 }
 
+TEST(test_composer_upload_payload){
+    char out[512];
+    int n = composer_upload_payload("hi \"x\"", "a\nb.png", out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"content\":\"hi \\\"x\\\"\",\"attachments\":["
+                       "{\"id\":0,\"filename\":\"a\\nb.png\"}]}");
+    ASSERT_EQ_INT(n, (int)strlen(out));
+    n = composer_upload_payload(NULL, NULL, out, sizeof out);
+    ASSERT_EQ_STR(out, "{\"content\":\"\",\"attachments\":["
+                       "{\"id\":0,\"filename\":\"\"}]}");
+    ASSERT_EQ_INT(composer_upload_payload("", "", out, 20), -1);
+}
+
 TEST(test_composer_name_payload){
     char out[128];
     int n = composer_name_payload("My \"crew\"", out, sizeof out);
@@ -157,5 +169,6 @@ void run_ime_utf8_tests(void){
     g_tests_run++; test_composer_payload_edit();
     g_tests_run++; test_composer_group_dm();
     g_tests_run++; test_composer_forum_post();
+    g_tests_run++; test_composer_upload_payload();
     g_tests_run++; test_composer_name_payload();
 }

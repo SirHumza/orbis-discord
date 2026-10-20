@@ -56,7 +56,7 @@ hardware yet.
 | Forums: posts overlay, CROSS opens a post, SQUARE creates a post (title + body) | Done | host tests, PS4 elf |
 | Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
 | Voice join: CROSS on a voice channel runs the voice WS/UDP handshake | Partial (no audio yet) | host tests, PS4 elf |
-| Attachments: SQUARE in the viewer saves to downloads, L1 uploads a saved file | Done | host tests, PS4 elf |
+| Attachments: SQUARE saves from the viewer; L1 uploads a saved file with an optional caption | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
 | Composer via PS4 IME, send with optimistic append + ack correction | Done | host tests, PS4 elf |
 | Member list (REST members, presence dots from gateway), DM home, offline banner | Done | host tests, PS4 elf, PKG |
@@ -73,7 +73,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (178 checks) + fixtures
+tests/        host test suite (179 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -117,7 +117,7 @@ Phase 1 (in progress):
 
 Phase 2, messaging parity:
 
-- [x] Attachment download (viewer save) and upload (multipart, saved files)
+- [x] Attachment download (viewer save) and upload (multipart with optional caption)
 - [x] Link previews (embed cards: site/author, title, description, image, footer)
 - [x] Image viewer: fullscreen fit with UP/DOWN cycling, TRIANGLE opens, CROSS closes
 - [x] Reaction rendering: chip row, counts, me highlight, live gateway updates
@@ -169,8 +169,8 @@ Phase 2, messaging parity:
 - Attachments are capped at 4 per message and embeds at 2; embeds keep at
   most 4 fields, rendered stacked (inline columns are ignored), and video
   embeds are not rendered. Uploads are
-  attachment-only (no caption), limited to 8 MB, and read from
-  `/data/orbis-discord/downloads`.
+  limited to 8 MB and read from `/data/orbis-discord/downloads`; the caption
+  is a second IME prompt after the file is chosen.
 - User-token clients are against Discord's terms; use at your own risk.
 
 ## Credits
