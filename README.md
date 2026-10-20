@@ -54,7 +54,7 @@ hardware yet.
 | Channel invites: SQUARE on a text channel lists, creates, and revokes invites | Done | host tests, PS4 elf |
 | Threads: TRIANGLE lists active threads, CROSS opens one in the channel list | Done | host tests, PS4 elf |
 | Forums: posts overlay, CROSS opens a post, SQUARE creates a post (title + body) | Done | host tests, PS4 elf |
-| Settings: L3 -> Settings shows account/gateway info, sound toggle, logout | Done | host tests, PS4 elf |
+| Settings: L3 -> Settings shows account/gateway info, persisted sound toggle, logout | Done | host tests, PS4 elf |
 | Voice join: CROSS on a voice channel runs the voice WS/UDP handshake | Partial (no audio yet) | host tests, PS4 elf |
 | Attachments: SQUARE saves from the viewer; L1 uploads a saved file with an optional caption | Done | host tests, PS4 elf |
 | Message history: 50-msg pages, UTF-8 wrap, grouping, day separators, scroll paging | Done | host tests, PS4 elf |
@@ -100,8 +100,8 @@ make pkg                   # build/orbis-discord.pkg (installable package)
 ```
 
 Runtime paths on the console:
-`/data/orbis-discord/token` (0600), `/data/orbis-discord/orbis-discord.log`,
-`/data/orbis-discord/downloads/`.
+`/data/orbis-discord/token` (0600), `/data/orbis-discord/sound` (0600),
+`/data/orbis-discord/orbis-discord.log`, `/data/orbis-discord/downloads/`.
 
 ## Roadmap to full parity
 
@@ -146,7 +146,7 @@ Phase 2, messaging parity:
 - [x] Channel invites (list/create/revoke)
 - [x] Active threads (list, open)
 - [x] Forums (browse active posts, create a post with title and body)
-- [x] Settings screen (account/gateway info, sound toggle, logout)
+- [x] Settings screen (account/gateway info, persisted sound toggle, logout)
 - [ ] Slash commands (application commands cannot be invoked with a user token)
 - [x] Voice join: gateway op 4, voice WS identify, UDP IP discovery, select_protocol
 - [ ] Voice receive: blocked, Discord requires DAVE E2EE (close code 4017)

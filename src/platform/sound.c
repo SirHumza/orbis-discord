@@ -5,8 +5,13 @@
 #include "../model/tone.h"
 #include "log.h"
 #include <SDL2/SDL.h>
+#include <fcntl.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#define SOUND_CFG "/data/orbis-discord/sound"
 
 #define SND_FRAMES 22050
 
@@ -55,8 +60,31 @@ int sound_init(void){
     return 1;
 }
 
+void sound_load_state(void){
+    char b[8];
+    ssize_t n;
+    int fd = open(SOUND_CFG, O_RDONLY);
+    if(fd < 0) return;
+    n = read(fd, b, sizeof b - 1);
+    close(fd);
+    if(n <= 0) return;
+    b[n] = 0;
+    s_enabled = b[0] != '0';
+}
+
+static void sound_save_state(void){
+    int fd;
+    const char *v = s_enabled ? "1\n" : "0\n";
+    mkdir("/data/orbis-discord", 0700);
+    fd = open(SOUND_CFG, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if(fd < 0) return;
+    if(write(fd, v, 2) != 2)
+        log_msg("sound: preference save failed");
+    close(fd);
+}
+
 int sound_enabled(void){ return s_enabled; }
-void sound_set_enabled(int on){ s_enabled = on; }
+void sound_set_enabled(int on){ s_enabled = on; sound_save_state(); }
 
 static void play(int kind){
     int next, n;

@@ -38,6 +38,7 @@ int main(void){
     ime_init();
     cdn_init();
     sound_init();
+    sound_load_state();
 
     for(;;){
         if(relogin || !token_load(app.token, sizeof app.token)){
