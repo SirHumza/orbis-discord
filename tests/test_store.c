@@ -156,6 +156,7 @@ TEST(test_store_channels_for_guild){
 TEST(test_store_revision_tracks_mutations){
     store *st = store_new();
     message a = {.id = 10, .chan = 1, .author_id = 7};
+    guild g = {.id = 5, .my_perms = PERM_VIEW_CHANNEL};
     uint64_t r0 = store_revision(st);
     strcpy(a.content, "one");
     store_put_message(st, &a);
@@ -166,6 +167,13 @@ TEST(test_store_revision_tracks_mutations){
     ASSERT_TRUE(store_revision(st) != r0);
     r0 = store_revision(st);
     store_del_message(st, 1, 10);
+    ASSERT_TRUE(store_revision(st) != r0);
+    r0 = store_revision(st);
+    store_put_guild(st, &g);
+    ASSERT_TRUE(store_revision(st) != r0);
+    r0 = store_revision(st);
+    store_set_guild_perms(st, 5, PERM_VIEW_CHANNEL | PERM_SEND_MESSAGES,
+                          NULL, 0);
     ASSERT_TRUE(store_revision(st) != r0);
     store_free(st);
 }

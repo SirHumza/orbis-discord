@@ -348,7 +348,11 @@ void store_put_guild(store *st, const guild *in){
     size_t i;
     if(!st || !in) return;
     for(i = 0; i < st->nguilds; i++)
-        if(st->guilds[i].id == in->id){ st->guilds[i] = *in; return; }
+        if(st->guilds[i].id == in->id){
+            st->guilds[i] = *in;
+            st->rev++;
+            return;
+        }
     if(st->nguilds == st->capguilds){
         size_t nc = st->capguilds ? st->capguilds * 2 : 16;
         guild *p = realloc(st->guilds, nc * sizeof *p);
@@ -356,6 +360,7 @@ void store_put_guild(store *st, const guild *in){
         st->guilds = p; st->capguilds = nc;
     }
     st->guilds[st->nguilds++] = *in;
+    st->rev++;
 }
 
 void store_set_guild_perms(store *st, uint64_t guild_id, uint64_t perms,
@@ -371,6 +376,7 @@ void store_set_guild_perms(store *st, uint64_t guild_id, uint64_t perms,
     if(nroles > 16) nroles = 16;
     gu->my_nroles = nroles;
     if(roles && nroles) memcpy(gu->my_roles, roles, (size_t)nroles * sizeof *roles);
+    st->rev++;
 }
 
 void store_put_member(store *st, const member *in){

@@ -208,6 +208,7 @@ typedef struct {
     uint64_t badge_rev;
     uint64_t badge_last_read;
     uint64_t badge_chan;
+    uint64_t badge_self;
     int badge_n;
     int dm_unread;
     guild_badge badges[64];
@@ -2083,11 +2084,13 @@ static void badges_refresh(main_ctx *L){
     const guild *gs[64];
     const channel *dms[64];
     size_t n, dn, i;
+    uint64_t self = gw_self_id(L->app->gw);
     if(rev == L->badge_rev && lr == L->badge_last_read &&
-       L->chan_loaded == L->badge_chan) return;
+       L->chan_loaded == L->badge_chan && self == L->badge_self) return;
     L->badge_rev = rev;
     L->badge_last_read = lr;
     L->badge_chan = L->chan_loaded;
+    L->badge_self = self;
     n = store_guilds(st, gs, 64);
     L->badge_n = (int)n;
     for(i = 0; i < n; i++){
