@@ -207,7 +207,9 @@ typedef struct {
     char voice_token[256];
     uint64_t badge_rev;
     uint64_t badge_last_read;
+    uint64_t badge_chan;
     int badge_n;
+    int dm_unread;
     guild_badge badges[64];
     uint64_t cat_ids[16];
     int cat_n;
@@ -2079,10 +2081,13 @@ static void badges_refresh(main_ctx *L){
     uint64_t lr = lc ? lc->last_read : 0;
     uint64_t rev = store_revision(st);
     const guild *gs[64];
-    size_t n, i;
-    if(rev == L->badge_rev && lr == L->badge_last_read) return;
+    const channel *dms[64];
+    size_t n, dn, i;
+    if(rev == L->badge_rev && lr == L->badge_last_read &&
+       L->chan_loaded == L->badge_chan) return;
     L->badge_rev = rev;
     L->badge_last_read = lr;
+    L->badge_chan = L->chan_loaded;
     n = store_guilds(st, gs, 64);
     L->badge_n = (int)n;
     for(i = 0; i < n; i++){
@@ -2090,6 +2095,13 @@ static void badges_refresh(main_ctx *L){
         store_guild_unread(st, gs[i]->id, gw_self_id(L->app->gw),
                            &L->badges[i].unread, &L->badges[i].mentions);
     }
+    L->dm_unread = 0;
+    dn = store_dm_channels(st, dms, 64);
+    for(i = 0; i < dn; i++)
+        if(store_unread(st, dms[i]->id)){
+            L->dm_unread = 1;
+            break;
+        }
 }
 
 static void draw_member_row(const member *m, int y, int online){
@@ -2927,6 +2939,8 @@ static void draw_main(main_ctx *L, const frame_view *v){
             if(sel) ui_rect(0, y + 12, 4, 24, UI_TEXT);
             if(i == 0){
                 ui_text(36 - ui_text_width("DM", 18) / 2, y + 14, "DM", 0xFFFFFFFFu, 18);
+                if(L->dm_unread)
+                    ui_rrect(12 + 48 - 12, y + 34, 10, 10, 5, 0xFFFFFFFFu);
             } else if(!v->guilds[i - 1]->icon_url[0] ||
                       !ui_img(v->guilds[i - 1]->icon_url, 16, y + 4, 40, 40)){
                 first_codepoint(v->guilds[i - 1]->name, buf, sizeof buf);
