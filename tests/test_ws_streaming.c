@@ -68,6 +68,34 @@ TEST(test_ws_env_field_split_across_chunks){
     ASSERT_EQ_STR(out, "{\"op\":1,\"t\":\"MESSAGE_CREATE\"}");
 }
 
+TEST(test_ws_env_scrapes_ready_auth){
+    const char *p =
+        "{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{"
+        "\"guilds\":[{\"voice_states\":[{\"session_id\":\"decoy\"}]}],"
+        "\"user\":{\"id\":\"5\",\"username\":\"me\"},"
+        "\"session_id\":\"sess-abc\"}}";
+    ws_env_t e;
+    ws_env_init(&e);
+    for(size_t i = 0; i < strlen(p); i++)
+        ws_env_feed(&e, (const unsigned char *)p + i, 1);
+    ASSERT_TRUE(e.have_session);
+    ASSERT_EQ_STR(e.session, "sess-abc");
+    ASSERT_TRUE(e.have_user_id);
+    ASSERT_EQ_STR(e.user_id, "5");
+    ASSERT_TRUE(e.have_user_name);
+    ASSERT_EQ_STR(e.user_name, "me");
+}
+
+TEST(test_ws_env_auth_ignores_nested_session){
+    const char *p =
+        "{\"op\":0,\"s\":1,\"t\":\"READY\",\"d\":{"
+        "\"guilds\":[{\"voice_states\":[{\"session_id\":\"decoy\"}]}]}}";
+    ws_env_t e;
+    ws_env_init(&e);
+    ws_env_feed(&e, (const unsigned char *)p, strlen(p));
+    ASSERT_TRUE(!e.have_session);
+}
+
 TEST(test_ws_handshake_origin_included){
     char req[768];
     int n = ws_build_handshake(req, sizeof req, "remote-auth-gateway.discord.gg", "/?v=2",
@@ -97,6 +125,10 @@ void run_ws_streaming_tests(void){
     test_ws_env_streams_oversized_ready_in_small_chunks();
     g_tests_run++;
     test_ws_env_field_split_across_chunks();
+    g_tests_run++;
+    test_ws_env_scrapes_ready_auth();
+    g_tests_run++;
+    test_ws_env_auth_ignores_nested_session();
     g_tests_run++;
     test_ws_handshake_origin_included();
     g_tests_run++;

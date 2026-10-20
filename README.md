@@ -18,7 +18,7 @@ hardware yet.
 | Area | State | Verified by |
 |---|---|---|
 | TLS 1.2/1.3 HTTP + WebSocket client (mbedTLS, curated CA bundle) | Done | host tests, PS4 elf |
-| Gateway session: identify, heartbeat, zombie detection, backoff reconnect | Done | host tests, PS4 elf |
+| Gateway session: identify, RESUME after drops, heartbeat, zombie detection, backoff reconnect | Done | host tests, PS4 elf |
 | REST queue with 429 `retry_after` handling | Done | host tests |
 | QR login (remote auth v2: nonce proof, RSA-OAEP, ticket exchange) | Done | host tests, PS4 elf |
 | Manual token login fallback via PS4 IME, token stored `0600` | Done | PS4 elf |
@@ -73,7 +73,7 @@ src/model/    snowflake ids + in-memory store (messages, channels, guilds, membe
 src/ui/       renderer, font, theme, login + main screens, nav
 src/platform/ PS4 glue: token file, IME dialog, pad input
 src/image.c   image/GIF pipeline + cache
-tests/        host test suite (179 checks) + fixtures
+tests/        host test suite (183 checks) + fixtures
 third_party/  mbedTLS, stb_image, stb_truetype, gifdec (patched), qrcodegen
 ```
 
@@ -110,6 +110,7 @@ Phase 1 (in progress):
 - [x] Transport fork, stores, gateway ingestion, REST, QR remote auth
 - [x] SDL2 renderer/font/theme, image + GIF pipeline
 - [x] Login screen, main layout, pad navigation, live gateway session
+- [x] Gateway RESUME after a drop; oversized READY scrapes session id and self identity
 - [x] Message view: history fetch, UTF-8 wrapping, grouping, day separators, scroll paging, live append
 - [x] Composer + IME + send, optimistic append, ack correction
 - [x] Member list + presence dots, offline banner, DM list, PKG packaging
@@ -154,10 +155,11 @@ Phase 2, messaging parity:
 
 ## Known limitations
 
-- Reconnect always re-IDENTIFYs; there is no RESUME (session id is lost to
-  the oversized-READY envelope). Repeated drops hit Discord's identify budget.
-- Gateway frames above 64 KB are reduced to `op/s/t`; a rare oversized
-  MESSAGE_CREATE is recovered by refetching history, not live.
+- Reconnects RESUME when the oversized READY yielded a session id, and fall
+  back to IDENTIFY when the session expired or was never captured.
+- Gateway frames above 64 KB are reduced to `op/s/t` plus the READY session
+  id and user; a rare oversized MESSAGE_CREATE is recovered by refetching
+  history, not live.
 - Voice joins complete the voice WS/UDP handshake but carry no audio.
   Discord requires DAVE (E2EE) for all voice since March 2026; non-DAVE
   sessions are rejected with close code 4017. Enabling audio needs libdave

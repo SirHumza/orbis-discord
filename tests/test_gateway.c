@@ -40,6 +40,32 @@ TEST(test_events_ready_resume_payload){
     gw_free(g); store_free(s);
 }
 
+TEST(test_events_minimal_ready_keeps_auth){
+    setup();
+    int ev = feed("{\"op\":0,\"s\":1,\"t\":\"READY\"}");
+    ASSERT_TRUE(ev & GW_EV_READY);
+    gw_set_identity(g, 5, "me");
+    gw_set_session(g, "sess-abc");
+    ASSERT_EQ_STR(gw_self_name(g), "me");
+    ASSERT_EQ_INT(gw_self_id(g), 5);
+    char out[512];
+    ASSERT_TRUE(gw_resume(g, out, sizeof out) > 0);
+    ASSERT_TRUE(strstr(out, "\"session_id\":\"sess-abc\"") != NULL);
+    gw_force_resume(g);
+    ASSERT_EQ_INT(gw_state(g), 2);
+    gw_free(g); store_free(s);
+}
+
+TEST(test_events_force_resume_needs_session){
+    setup();
+    gw_force_resume(g);
+    ASSERT_EQ_INT(gw_state(g), 0);
+    gw_set_session(g, "sess-abc");
+    gw_force_resume(g);
+    ASSERT_EQ_INT(gw_state(g), 2);
+    gw_free(g); store_free(s);
+}
+
 TEST(test_events_identify_has_token_and_op){
     setup();
     char out[1024];
@@ -254,6 +280,8 @@ TEST(test_gateway_presence_payload){
 void run_gateway_tests(void){
     g_tests_run++; test_events_ready();
     g_tests_run++; test_events_ready_resume_payload();
+    g_tests_run++; test_events_minimal_ready_keeps_auth();
+    g_tests_run++; test_events_force_resume_needs_session();
     g_tests_run++; test_events_identify_has_token_and_op();
     g_tests_run++; test_events_message_create();
     g_tests_run++; test_events_message_update_sets_edit_flag();

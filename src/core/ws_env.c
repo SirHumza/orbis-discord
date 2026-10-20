@@ -76,8 +76,126 @@ static size_t copy_field(const char *w, size_t n, const char *key,
     return 0;
 }
 
+static char *auth_dst(ws_env_t *e, size_t *cap){
+    if(e->target == 1){ *cap = sizeof e->session; return e->session; }
+    if(e->target == 2){ *cap = sizeof e->user_id; return e->user_id; }
+    if(e->target == 3){ *cap = sizeof e->user_name; return e->user_name; }
+    *cap = 0;
+    return NULL;
+}
+
+static void auth_done(ws_env_t *e){
+    if(e->target == 1) e->have_session = e->session[0] != 0;
+    else if(e->target == 2) e->have_user_id = e->user_id[0] != 0;
+    else if(e->target == 3) e->have_user_name = e->user_name[0] != 0;
+}
+
+/* Track JSON depth over the whole payload and pull d.session_id plus the
+ * d.user id/username out of READY. A plain substring search would match the
+ * session_id inside guild voice_states, so keys only count at the depth of
+ * the d object (2) or of d.user's fields (3). */
+static void auth_scan(ws_env_t *e, const unsigned char *p, size_t n){
+    size_t i;
+    if(e->have_session && e->have_user_id && e->have_user_name) return;
+    for(i = 0; i < n; i++){
+        char c = (char)p[i];
+        if(e->instr){
+            size_t cap;
+            char *dst;
+            if(e->esc){
+                e->esc = 0;
+                if(e->val_active){
+                    dst = auth_dst(e, &cap);
+                    if(dst && e->val_len + 1 < cap) dst[e->val_len++] = c;
+                }
+                continue;
+            }
+            if(c == '\\'){ e->esc = 1; continue; }
+            if(c == '"'){
+                e->instr = 0;
+                if(e->key_active){
+                    e->key_active = 0;
+                    e->key[e->key_len] = 0;
+                    if(e->depth == 2 && !strcmp(e->key, "session_id")){
+                        e->target = 1;
+                        e->key_match = 1;
+                    } else if(e->depth == 2 && !strcmp(e->key, "user")){
+                        e->user_pending = 1;
+                    } else if(e->depth == 3 && e->user_active &&
+                              !strcmp(e->key, "id")){
+                        e->target = 2;
+                        e->key_match = 1;
+                    } else if(e->depth == 3 && e->user_active &&
+                              !strcmp(e->key, "username")){
+                        e->target = 3;
+                        e->key_match = 1;
+                    }
+                } else if(e->val_active){
+                    size_t cap;
+                    char *dst = auth_dst(e, &cap);
+                    if(dst && e->val_len < cap) dst[e->val_len] = 0;
+                    e->val_active = 0;
+                    auth_done(e);
+                }
+                continue;
+            }
+            if(e->key_active){
+                if(e->key_len + 1 < sizeof e->key)
+                    e->key[e->key_len++] = c;
+            } else if(e->val_active){
+                size_t cap;
+                char *dst = auth_dst(e, &cap);
+                if(dst && e->val_len + 1 < cap) dst[e->val_len++] = c;
+            }
+            continue;
+        }
+        if(c == '"'){
+            e->instr = 1;
+            if(e->want_value){
+                e->want_value = 0;
+                e->val_active = 1;
+                e->val_len = 0;
+                {
+                    size_t cap;
+                    char *dst = auth_dst(e, &cap);
+                    if(dst) dst[0] = 0;
+                }
+            } else {
+                e->key_active = 1;
+                e->key_len = 0;
+            }
+            continue;
+        }
+        if(c == '{' || c == '['){
+            if(e->user_pending && c == '{' && e->depth == 2){
+                e->user_active = 1;
+                e->user_depth = e->depth + 1;
+                e->user_pending = 0;
+            }
+            e->depth++;
+            e->key_match = 0;
+            e->want_value = 0;
+        } else if(c == '}' || c == ']'){
+            if(e->user_active && e->depth == e->user_depth)
+                e->user_active = 0;
+            e->depth--;
+            if(e->depth < 0) e->depth = 0;
+            e->key_match = 0;
+            e->want_value = 0;
+            e->user_pending = 0;
+        } else if(c == ':'){
+            if(e->key_match) e->want_value = 1;
+        } else if(c == ','){
+            e->key_match = 0;
+            e->want_value = 0;
+            e->user_pending = 0;
+        }
+    }
+}
+
 void ws_env_feed(ws_env_t *e, const unsigned char *p, size_t n){
     if(!e || !p || n == 0) return;
+    auth_scan(e, p, n);
     /* Retain a bounded prefix. Once saturated, further bytes are discarded,
      * which is the whole point: memory does not track payload size. */
     if(e->winlen < WS_ENV_WINDOW){

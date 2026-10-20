@@ -20,9 +20,9 @@
  * permanent connect failure). WS_BODY_MAX is the actual fix. */
 #define WS_RBUF_MAX (32*1024*1024)
 /* Largest frame payload ever buffered whole. Above this the payload is
- * streamed and only op/s/t are kept (see ws_env.h), so an oversized READY
- * costs a fixed 2 KB window instead of tens of megabytes. Callers cap
- * payloads at 2 KB anyway. */
+ * streamed and only op/s/t plus READY auth fields are kept (see ws_env.h),
+ * so an oversized READY costs a fixed 2 KB window instead of tens of
+ * megabytes. Callers cap payloads at 2 KB anyway. */
 #define WS_BODY_MAX 65536
 
 typedef struct {
@@ -42,6 +42,12 @@ typedef struct {
     int env_active;             /* 1 while an oversized frame is being drained */
     int env_reported;          /* envelope already handed back for this frame */
     int grow_warned;            /* rbuf realloc already logged a failure */
+    /* Auth fields scraped from an oversized READY. Persist for the life of
+     * the connection so a late session_id can still feed RESUME. */
+    char session_id[128];
+    char user_name[64];
+    uint64_t user_id;
+    int have_session, have_user;
 } ws_t;
 
 int ws_connect(ws_t *w, const char *host, int port, const char *resource, const char *key,
@@ -58,6 +64,11 @@ int ws_send_text(ws_t *w, const char *msg, size_t len);
 int ws_recv_frame(ws_t *w, char *buf, size_t cap, int *opcode_out, int *fin_out);
 int ws_pong(ws_t *w); /* answer a server PING (call when recv gives opcode 9) */
 int ws_close(ws_t *w);
+/* Identity scraped from an oversized READY (empty/0 when READY was small and
+ * parsed normally). Safe to poll every loop; values are stable per socket. */
+const char *ws_session_id(ws_t *w);
+uint64_t ws_user_id(ws_t *w);
+const char *ws_user_name(ws_t *w);
 /* How many payload bytes remain to discard after an oversized frame's header
  * has been consumed. Saturates at 0 rather than wrapping when payload_here
  * already covers plen. Pure, so the host tests can pin it: the drain state

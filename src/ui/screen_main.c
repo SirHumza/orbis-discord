@@ -5,8 +5,9 @@
  * (op/s/t only), so the store is bootstrapped over HTTP instead. The gateway
  * is kept for realtime deltas (messages, presences) and heartbeats.
  *
- * No RESUME: session_id lives past the oversized guilds array in READY and is
- * lost to the envelope. Reconnects re-IDENTIFY, which Discord accepts. */
+ * RESUME: session_id and the self user sit past the 2 KB envelope window, so
+ * ws_env scrapes them at JSON depth while the rest streams by. Reconnects
+ * RESUME when a session exists and fall back to IDENTIFY otherwise. */
 #include "screens.h"
 #include "renderer.h"
 #include "theme.h"
@@ -108,6 +109,9 @@ typedef struct {
     char *recv;
     int up;
     int identified;
+    char applied_session[128];
+    char applied_name[64];
+    uint64_t applied_self;
     int guilds_loaded;
     int guilds_pending;
     uint64_t guilds_retry_at;
@@ -1902,9 +1906,36 @@ static void gw_drop(main_ctx *L, uint64_t now, const char *why){
     L->identified = 0;
     L->chan_pending = 0;
     L->chan_guild = 0;
+    /* If READY supplied a session, ask the next HELLO to RESUME instead of
+     * IDENTIFY. gw_force_resume() is a no-op without a session. */
+    gw_force_resume(app->gw);
     gw_on_reconnect_failed(app->gw, now);
     set_status(L, "Reconnecting...");
     log_msg("gw: dropped (%s)", why);
+}
+
+/* READY is streamed, so identity/session are scraped by ws_env and polled
+ * here after each recv batch. Small READYs already set them via on_ready. */
+static void apply_ws_auth(main_ctx *L){
+    gateway *g = L->app->gw;
+    const char *sid = ws_session_id(&L->ws);
+    const char *name = ws_user_name(&L->ws);
+    uint64_t uid = ws_user_id(&L->ws);
+    if(sid[0] && strcmp(sid, L->applied_session)){
+        gw_set_session(g, sid);
+        snprintf(L->applied_session, sizeof L->applied_session, "%s", sid);
+        log_msg("gw: session captured (%dB)", (int)strlen(sid));
+    }
+    if(uid && uid != L->applied_self){
+        gw_set_identity(g, uid, name);
+        L->applied_self = uid;
+        log_msg("gw: self id %llu", (unsigned long long)uid);
+    }
+    if(name[0] && strcmp(name, L->applied_name)){
+        gw_set_identity(g, uid, name);
+        snprintf(L->applied_name, sizeof L->applied_name, "%s", name);
+        snprintf(L->app->self_name, sizeof L->app->self_name, "%s", name);
+    }
 }
 
 static uint64_t chan_perms(main_ctx *L, const channel *ch){
@@ -3125,7 +3156,12 @@ int screen_main_run(app_state *st){
                 }
                 if(ev & GW_EV_HELLO){
                     char out[2048];
-                    int in = gw_identify(g, out, sizeof out);
+                    int resuming = gw_state(g) == 2;
+                    int in = resuming ? gw_resume(g, out, sizeof out) : 0;
+                    if(in <= 0){
+                        resuming = 0;
+                        in = gw_identify(g, out, sizeof out);
+                    }
                     if(in > 0) ws_send_text(&L.ws, out, (size_t)in);
                     {
                         size_t len = 0;
@@ -3134,8 +3170,8 @@ int screen_main_run(app_state *st){
                         gw_mark_beat(g, now);
                     }
                     L.identified = 1;
-                    set_status(&L, "Loading...");
-                    log_msg("gw: hello -> identify");
+                    set_status(&L, resuming ? "Resuming..." : "Loading...");
+                    log_msg("gw: hello -> %s", resuming ? "resume" : "identify");
                 }
                 if(ev & GW_EV_READY){
                     log_msg("gw: ready (%s)", gw_self_name(g));
@@ -3158,6 +3194,7 @@ int screen_main_run(app_state *st){
                 }
                 if(ev & GW_EV_VOICE_SERVER) voice_connect(&L);
             }
+            apply_ws_auth(&L);
             if(L.up && L.identified && gw_heartbeat_due(g, now)){
                 if(gw_expired_heartbeat(g)){
                     gw_drop(&L, now, "heartbeat unacked");

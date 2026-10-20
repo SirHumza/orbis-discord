@@ -1,7 +1,7 @@
 /* ws_env.h - streaming envelope extraction for oversized WebSocket frames.
  *
  * A Discord READY frame is ~12 MB, almost all of it the "d" object. The
- * daemon only ever reads three top-level fields from a gateway frame:
+ * envelope needs these three top-level fields from a gateway frame:
  *
  *     {"op":0,"s":41,"t":"READY","d":{ ...12 MB... }}
  *              ^    ^      ^
@@ -39,6 +39,20 @@ typedef struct {
     char op[32];
     char s[32];
     char t[64];
+    /* Streaming auth scrape. READY is the only oversized frame that carries
+     * these, and its d.session_id / d.user sit past the 2 KB window, so they
+     * are matched at JSON depth while the rest of the payload streams by.
+     * Depth 2 is the d object; depth 3 inside d.user. */
+    int depth, instr, esc;
+    int key_active, key_match, want_value, val_active;
+    size_t key_len, val_len;
+    char key[24];
+    int target;                /* 1 session, 2 user id, 3 username */
+    int user_pending, user_active, user_depth;
+    char session[128];
+    char user_id[24];
+    char user_name[64];
+    int have_session, have_user_id, have_user_name;
 } ws_env_t;
 
 void ws_env_init(ws_env_t *e);

@@ -7,6 +7,7 @@
 #include "ws.h"
 #include "b64.h"
 #include "clock.h"
+#include "snowflake.h"
 #include "tls.h"
 #include "log.h"
 #ifdef ORBISRPC_SDK_PAYLOAD
@@ -380,6 +381,18 @@ static int valid_frame_header(const unsigned char *b, uint64_t plen){
 #include "ws_skip.c"
 #include "ws_env.c"
 
+static void ws_env_take(ws_t *w, const unsigned char *p, size_t n){
+    ws_env_feed(&w->env, p, n);
+    if(w->env.have_session && !w->have_session){
+        snprintf(w->session_id, sizeof w->session_id, "%s", w->env.session);
+        w->have_session = 1;
+    }
+    if(w->env.have_user_id && !w->user_id)
+        w->user_id = sn_parse(w->env.user_id);
+    if(w->env.have_user_name)
+        snprintf(w->user_name, sizeof w->user_name, "%s", w->env.user_name);
+}
+
 int ws_recv_frame(ws_t *w, char *buf, size_t cap, int *opcode_out, int *fin_out){
     if(!w || !w->connected || !buf || cap==0) return -1;
     for(;;){
@@ -394,7 +407,7 @@ int ws_recv_frame(ws_t *w, char *buf, size_t cap, int *opcode_out, int *fin_out)
             size_t have = w->rlen - w->rpos;
             size_t take = have < (size_t)w->skip_left ? have : (size_t)w->skip_left;
             if(take && w->env_active)
-                ws_env_feed(&w->env, w->rbuf + w->rpos, take);
+                ws_env_take(w, w->rbuf + w->rpos, take);
             w->skip_left -= take; w->rpos += take;
             if(w->rpos >= w->rlen){ w->rpos=0; w->rlen=0; }
             /* Hand back the envelope as soon as op/s/t are known instead of
@@ -465,7 +478,12 @@ int ws_recv_frame(ws_t *w, char *buf, size_t cap, int *opcode_out, int *fin_out)
                     size_t h = (hdr < avail) ? hdr : avail;
                     w->rpos += h;                       /* eat the header */
                     size_t payload_here = avail - h;
-                    if(payload_here) ws_env_feed(&w->env, w->rbuf + w->rpos, payload_here);
+                    /* Fresh scrape per frame: without this the READY envelope
+                     * (including its t=READY) stuck around and was reported
+                     * again for the next oversized GUILD_CREATE. */
+                    ws_env_init(&w->env);
+                    if(payload_here)
+                        ws_env_take(w, w->rbuf + w->rpos, payload_here);
                     /* skip_left counts EVERY payload byte still to consume,
                      * including the ones already sitting in rbuf. Passing
                      * payload_here here was a double-count: ws_skip_plan()
@@ -525,7 +543,7 @@ int ws_recv_frame(ws_t *w, char *buf, size_t cap, int *opcode_out, int *fin_out)
                     size_t take = (size_t)w->skip_left;
                     if(take > w->rlen) take = w->rlen;
                     if(take && w->env_active)
-                        ws_env_feed(&w->env, w->rbuf + w->rpos, take);
+                        ws_env_take(w, w->rbuf + w->rpos, take);
                     w->skip_left -= take;
                     w->rpos += take;
                     if(w->rpos >= w->rlen){ w->rpos=0; w->rlen=0; }
@@ -584,3 +602,7 @@ int ws_close(ws_t *w){
     w->skip_left=0;
     return 0;
 }
+
+const char *ws_session_id(ws_t *w){ return w ? w->session_id : ""; }
+uint64_t ws_user_id(ws_t *w){ return w ? w->user_id : 0; }
+const char *ws_user_name(ws_t *w){ return w ? w->user_name : ""; }

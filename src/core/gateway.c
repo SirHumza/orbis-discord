@@ -91,7 +91,18 @@ int gw_feed(gateway *g, const char *json, size_t len){
         const char *t = str(v, "t");
         jl_val_t *s = obj(v, "s");
         if(s && s->type == JL_NUMBER) g->seq = (int)s->num;
-        if(d && t[0]) ev = events_dispatch(g, t, d);
+        if(t[0] && !strcmp(t, "RESUMED")){
+            gw_on_ready(g, "", "", 0);   /* keeps the existing identity */
+            ev = GW_EV_READY;
+        } else if(d && t[0]){
+            ev = events_dispatch(g, t, d);
+        } else if(t[0] && !strcmp(t, "READY")){
+            /* Oversized READY: the streamed envelope has no d, so identity
+             * and session arrive separately through gw_set_identity() and
+             * gw_set_session(). Still report READY so the UI leaves
+             * "Loading..." and heartbeat/online state settles. */
+            ev = GW_EV_READY;
+        }
         break;
     }
     case 10:
@@ -107,6 +118,7 @@ int gw_feed(gateway *g, const char *json, size_t len){
         break;
     case 9:
         g->seq = 0;
+        g->state = 0;
         if(d && d->type == JL_BOOL && d->num == 0) g->session_id[0] = 0;
         ev = GW_EV_INVALID_SESSION;
         break;
@@ -124,7 +136,27 @@ uint64_t gw_self_id(gateway *g){ return g ? g->self_id : 0; }
 int gw_interval_ms(gateway *g){ return g ? g->interval_ms : 41250; }
 int gw_seq(gateway *g){ return g ? g->seq : 0; }
 int gw_state(gateway *g){ return g ? g->state : 0; }
-void gw_force_resume(gateway *g){ if(g) g->state = 2; }
+void gw_force_resume(gateway *g){
+    /* Only a session from a live READY (state 1) or an in-flight RESUME
+     * (state 2) may be retried. After op9 the state is 0, so the next
+     * reconnect falls back to IDENTIFY instead of resuming a dead session. */
+    if(g && g->session_id[0] && (g->state == 1 || g->state == 2))
+        g->state = 2;
+}
+int gw_has_session(gateway *g){
+    return g && g->session_id[0] != 0;
+}
+void gw_set_session(gateway *g, const char *session_id){
+    if(!g || !session_id || !session_id[0]) return;
+    snprintf(g->session_id, sizeof g->session_id, "%s", session_id);
+    g->state = 1;
+}
+void gw_set_identity(gateway *g, uint64_t id, const char *name){
+    if(!g) return;
+    if(id) g->self_id = id;
+    if(name && name[0])
+        snprintf(g->self_name, sizeof g->self_name, "%s", name);
+}
 
 store *gw_store(gateway *g){ return g ? g->st : NULL; }
 
@@ -172,9 +204,11 @@ void gw_set_voice_server(gateway *g, const char *token, const char *endpoint,
 
 void gw_on_ready(gateway *g, const char *session_id, const char *name, uint64_t id){
     if(!g) return;
-    snprintf(g->session_id, sizeof g->session_id, "%s", session_id ? session_id : "");
-    snprintf(g->self_name, sizeof g->self_name, "%s", name ? name : "");
-    g->self_id = id;
+    if(session_id && session_id[0])
+        snprintf(g->session_id, sizeof g->session_id, "%s", session_id);
+    if(name && name[0])
+        snprintf(g->self_name, sizeof g->self_name, "%s", name);
+    if(id) g->self_id = id;
     g->state = 1;
 }
 
