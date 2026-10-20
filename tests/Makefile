@@ -1,5 +1,7 @@
 CC ?= cc
-CFLAGS += -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -Wall -Wextra -Werror
+BASE_CFLAGS := -std=c11 -D_POSIX_C_SOURCE=200809L -D_DEFAULT_SOURCE -Wall -Wextra -Werror
+SAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+CFLAGS += $(BASE_CFLAGS)
 SRC := ../src/core
 MODEL := ../src/model
 MBEDTLS := ../third_party/mbedtls
@@ -13,7 +15,11 @@ APP_SRCS := $(SRC)/b64.c $(SRC)/jsonlite.c $(SRC)/gateway.c $(SRC)/events.c \
 MBEDTLS_SRCS := $(filter-out $(MBEDTLS)/library/net_sockets.c $(MBEDTLS)/library/timing.c $(MBEDTLS)/library/entropy_poll.c $(wildcard $(MBEDTLS)/library/ssl_*.c),$(wildcard $(MBEDTLS)/library/*.c))
 TARGET := run_tests
 
-.PHONY: test clean
+.PHONY: test clean asan
+
+asan:
+	$(MAKE) clean
+	$(MAKE) test CFLAGS="$(BASE_CFLAGS) $(SAN_FLAGS)"
 
 test: $(TARGET)
 	./$(TARGET)
