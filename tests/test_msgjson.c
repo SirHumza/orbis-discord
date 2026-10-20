@@ -337,12 +337,33 @@ TEST(test_msgjson_embed_metadata){
     jl_free(v);
 }
 
+TEST(test_msgjson_embed_fields){
+    const char *json =
+        "{\"id\":\"1\",\"channel_id\":\"2\",\"content\":\"\",\"embeds\":[{"
+        "\"title\":\"T\",\"fields\":["
+        "{\"name\":\"One\",\"value\":\"first\",\"inline\":true},"
+        "{\"name\":\"Two\",\"value\":\"second\",\"inline\":false},"
+        "{\"name\":\"\",\"value\":\"\"}]}]}";
+    jl_val_t *v = jl_parse(json, strlen(json));
+    message m;
+    ASSERT_TRUE(v != NULL);
+    ASSERT_EQ_INT(msg_from_json(&m, v), 1);
+    ASSERT_EQ_INT(m.nemb, 1);
+    ASSERT_EQ_INT(m.emb[0].nfields, 2);
+    ASSERT_EQ_STR(m.emb[0].field[0].name, "One");
+    ASSERT_EQ_STR(m.emb[0].field[0].value, "first");
+    ASSERT_EQ_STR(m.emb[0].field[1].name, "Two");
+    ASSERT_EQ_STR(m.emb[0].field[1].value, "second");
+    jl_free(v);
+}
+
 void run_msgjson_tests(void){
     g_tests_run++; test_msgjson_attachments_and_author();
     g_tests_run++; test_msgjson_edit_flag_and_svg();
     g_tests_run++; test_msgjson_embed_with_image();
     g_tests_run++; test_msgjson_embed_thumbnail_fallback();
     g_tests_run++; test_msgjson_embed_metadata();
+    g_tests_run++; test_msgjson_embed_fields();
     g_tests_run++; test_msgjson_reactions();
     g_tests_run++; test_msgjson_reply_reference();
     g_tests_run++; test_msgjson_reply_deleted_reference();

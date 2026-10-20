@@ -82,15 +82,17 @@ static int push_line(mv_layout *L, const message *m, int is_sep, int author,
     ln->att_h = 0;
     ln->emb = -1;
     ln->emb_kind = 0;
+    ln->fld = -1;
     ln->react = -1;
     ln->reply = -1;
     return 1;
 }
 
-static void mark_emb(mv_layout *L, int emb, int kind){
+static void mark_emb(mv_layout *L, int emb, int kind, int fld){
     if(emb >= 0 && L->n > 0){
         L->lines[L->n - 1].emb = emb;
         L->lines[L->n - 1].emb_kind = kind;
+        L->lines[L->n - 1].fld = fld;
     }
 }
 
@@ -117,12 +119,13 @@ static size_t utf8_step(const char *s, size_t len){
 /* Wraps one paragraph (no newlines inside) into rows. */
 static int wrap_paragraph(mv_layout *L, const message *m, const char *s,
                           size_t start, size_t end, int width,
-                          mv_measure_fn fn, void *ud, int y, int emb){
+                          mv_measure_fn fn, void *ud, int y, int emb,
+                          int kind, int fld){
     size_t off = start;
     if(width < 1) width = 1;
     if(start == end){
         push_line(L, m, 0, 0, (int)start, 0, y);
-        mark_emb(L, emb, 2);
+        mark_emb(L, emb, kind, fld);
         return y + MV_LINE_H;
     }
     while(off < end){
@@ -141,7 +144,7 @@ static int wrap_paragraph(mv_layout *L, const message *m, const char *s,
         }
         while(fit > off && s[fit - 1] == ' ') fit--;
         push_line(L, m, 0, 0, (int)off, (int)(fit - off), y);
-        mark_emb(L, emb, 2);
+        mark_emb(L, emb, kind, fld);
         y += MV_LINE_H;
         off = fit;
         while(off < end && s[off] == ' ') off++;
@@ -150,12 +153,13 @@ static int wrap_paragraph(mv_layout *L, const message *m, const char *s,
 }
 
 static int wrap_content(mv_layout *L, const message *m, const char *s, size_t len,
-                        int width, mv_measure_fn fn, void *ud, int y, int emb){
+                        int width, mv_measure_fn fn, void *ud, int y, int emb,
+                        int kind, int fld){
     size_t off = 0;
     while(off < len){
         size_t end = off;
         while(end < len && s[end] != '\n') end++;
-        y = wrap_paragraph(L, m, s, off, end, width, fn, ud, y, emb);
+        y = wrap_paragraph(L, m, s, off, end, width, fn, ud, y, emb, kind, fld);
         if(end >= len) break;
         off = end + 1;
     }
@@ -189,6 +193,7 @@ int mv_build(mv_layout *L, const message *head, int width_px,
     uint64_t prev_day = 0;
     int have_day = 0;
     int y = 0;
+    int f;
     if(!L) return 0;
     L->n = 0;
     L->height = 0;
@@ -214,7 +219,7 @@ int mv_build(mv_layout *L, const message *head, int width_px,
             y += MV_REPLY_H;
         }
         y = wrap_content(L, m, m->content, strlen(m->content),
-                         width_px, fn, ud, y, -1);
+                         width_px, fn, ud, y, -1, 2, -1);
         for(i = 0; i < m->natt; i++){
             const attachment *a = &m->att[i];
             if(a->image && a->w > 0 && a->h > 0){
@@ -237,17 +242,28 @@ int mv_build(mv_layout *L, const message *head, int width_px,
             const embed *e = &m->emb[i];
             if(e->site[0] || e->author[0]){
                 push_line(L, m, 0, 0, 0, 0, y);
-                mark_emb(L, i, 4);
+                mark_emb(L, i, 4, -1);
                 y += MV_LINE_H;
             }
             if(e->title[0]){
                 push_line(L, m, 0, 0, 0, 0, y);
-                mark_emb(L, i, 1);
+                mark_emb(L, i, 1, -1);
                 y += MV_LINE_H;
             }
             if(e->desc[0])
                 y = wrap_content(L, m, e->desc, strlen(e->desc),
-                                 width_px - 16, fn, ud, y, i);
+                                 width_px - 16, fn, ud, y, i, 2, -1);
+            for(f = 0; f < e->nfields; f++){
+                if(e->field[f].name[0]){
+                    push_line(L, m, 0, 0, 0, 0, y);
+                    mark_emb(L, i, 6, f);
+                    y += MV_LINE_H;
+                }
+                if(e->field[f].value[0])
+                    y = wrap_content(L, m, e->field[f].value,
+                                     strlen(e->field[f].value), width_px - 16,
+                                     fn, ud, y, i, 7, f);
+            }
             if(e->image_url[0] && e->image_w > 0 && e->image_h > 0){
                 int tw = width_px < MV_ATT_MAX_W ? width_px : MV_ATT_MAX_W;
                 int th = tw * e->image_h / e->image_w;
@@ -258,14 +274,14 @@ int mv_build(mv_layout *L, const message *head, int width_px,
                 if(tw < 24) tw = 24;
                 if(th < 24) th = 24;
                 push_line(L, m, 0, 0, 0, 0, y);
-                mark_emb(L, i, 3);
+                mark_emb(L, i, 3, -1);
                 L->lines[L->n - 1].att_w = tw;
                 L->lines[L->n - 1].att_h = th;
                 y += th + 6;
             }
             if(e->footer[0]){
                 push_line(L, m, 0, 0, 0, 0, y);
-                mark_emb(L, i, 5);
+                mark_emb(L, i, 5, -1);
                 y += MV_LINE_H;
             }
         }

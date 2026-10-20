@@ -2238,6 +2238,19 @@ static void draw_messages(main_ctx *L){
             } else if(ln->emb_kind == 5){
                 trunc_utf8(fb, sizeof fb, e->footer, 90);
                 ui_text(x0 + 16, y + 3, fb, UI_TEXT_DIM, 12);
+            } else if(ln->emb_kind == 6){
+                if(ln->fld >= 0 && ln->fld < e->nfields){
+                    trunc_utf8(fb, sizeof fb, e->field[ln->fld].name, 70);
+                    ui_text(x0 + 16, y + 2, fb, UI_TEXT, 14);
+                }
+            } else if(ln->emb_kind == 7){
+                if(ln->fld >= 0 && ln->fld < e->nfields){
+                    int len = ln->len;
+                    if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;
+                    memcpy(fb, e->field[ln->fld].value + ln->off, (size_t)len);
+                    fb[len] = 0;
+                    ui_text(x0 + 16, y + 2, fb, UI_TEXT_DIM, 14);
+                }
             } else {
                 int len = ln->len;
                 if(len > MV_MEASURE_MAX) len = MV_MEASURE_MAX;

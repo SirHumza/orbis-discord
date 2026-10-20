@@ -23,6 +23,13 @@ typedef struct {
     int image;
 } attachment;
 
+#define MSG_EMB_FIELDS 4
+
+typedef struct {
+    char name[48];
+    char value[120];
+} embed_field;
+
 typedef struct {
     char title[128];
     char desc[512];
@@ -31,6 +38,8 @@ typedef struct {
     char author[64];
     char footer[96];
     char image_url[320];
+    embed_field field[MSG_EMB_FIELDS];
+    int nfields;
     int image_w, image_h;
     uint32_t color;
     int has_color;

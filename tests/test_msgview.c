@@ -171,6 +171,27 @@ TEST(test_msgview_embed_metadata_rows){
     mv_free(&L);
 }
 
+TEST(test_msgview_embed_field_rows){
+    message a = mkmsg(1500000000000ULL, 1, 7, "hi", 0);
+    mv_layout L;
+    a.nemb = 1;
+    snprintf(a.emb[0].title, sizeof a.emb[0].title, "T");
+    a.emb[0].nfields = 1;
+    snprintf(a.emb[0].field[0].name, sizeof a.emb[0].field[0].name, "One");
+    snprintf(a.emb[0].field[0].value, sizeof a.emb[0].field[0].value, "first");
+    mv_init(&L);
+    ASSERT_EQ_INT(mv_build(&L, &a, 1000, fake_measure, NULL), 6);
+    ASSERT_EQ_INT(L.lines[3].emb_kind, 1);
+    ASSERT_EQ_INT(L.lines[4].emb_kind, 6);
+    ASSERT_EQ_INT(L.lines[4].fld, 0);
+    ASSERT_EQ_INT(L.lines[5].emb_kind, 7);
+    ASSERT_EQ_INT(L.lines[5].fld, 0);
+    ASSERT_EQ_INT(L.lines[5].len, 5);
+    ASSERT_EQ_INT(L.height,
+                  MV_SEP_H + 5 * MV_LINE_H + MV_GROUP_GAP);
+    mv_free(&L);
+}
+
 TEST(test_msgview_reaction_row){
     message a = mkmsg(1500000000000ULL, 1, 7, "hi", 0);
     mv_layout L;
@@ -251,6 +272,7 @@ void run_msgview_tests(void){
     g_tests_run++; test_msgview_attachment_rows();
     g_tests_run++; test_msgview_embed_rows();
     g_tests_run++; test_msgview_embed_metadata_rows();
+    g_tests_run++; test_msgview_embed_field_rows();
     g_tests_run++; test_msgview_reaction_row();
     g_tests_run++; test_msgview_reply_row();
     g_tests_run++; test_msgview_image_list();

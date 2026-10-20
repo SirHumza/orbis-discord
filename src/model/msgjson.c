@@ -201,8 +201,24 @@ int msg_from_json(message *m, jl_val_t *o){
                     e->has_color = 1;
                     e->color = 0xFF000000u | ((uint32_t)col->num & 0xFFFFFFu);
                 }
+                {
+                    jl_val_t *flds = field(ej, "fields");
+                    if(flds && flds->type == JL_ARRAY){
+                        int k;
+                        for(k = 0; k < flds->count &&
+                                  e->nfields < MSG_EMB_FIELDS; k++){
+                            jl_val_t *fj = jl_arr_at(flds, k);
+                            embed_field *ff = &e->field[e->nfields];
+                            snprintf(ff->name, sizeof ff->name, "%s",
+                                     jstr(field(fj, "name")));
+                            snprintf(ff->value, sizeof ff->value, "%s",
+                                     jstr(field(fj, "value")));
+                            if(ff->name[0] || ff->value[0]) e->nfields++;
+                        }
+                    }
+                }
                 if(e->title[0] || e->desc[0] || e->image_url[0] ||
-                   e->site[0] || e->author[0]) m->nemb++;
+                   e->site[0] || e->author[0] || e->nfields > 0) m->nemb++;
             }
         }
     }

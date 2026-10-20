@@ -31,7 +31,9 @@ typedef struct {
     int att;            /* attachment index, -1 for text rows */
     int att_w, att_h;   /* thumbnail box for image attachments */
     int emb;            /* embed index, -1 for non-embed rows */
-    int emb_kind;       /* 1 title, 2 description, 3 image */
+    int emb_kind;       /* 1 title, 2 description, 3 image, 4 site, 5 footer,
+                           6 field name, 7 field value */
+    int fld;            /* embed field index, -1 for non-field rows */
     int react;          /* -1 for non-reaction rows */
     int reply;          /* -1 for non-reply rows */
 } mv_line;
