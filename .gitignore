@@ -1,2 +1,4 @@
 .superpowers/
 scripts/__pycache__/
+tests/run_tests.dSYM/
+.DS_Store
